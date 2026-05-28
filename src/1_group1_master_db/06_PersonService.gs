@@ -445,10 +445,19 @@ function mergePersonRecords(sourceId, targetId) {
 // ============================================================
 
 function loadAllPersons_() {
+  // [PERF v5.4.005] RAM Cache — ข้าม CacheService ถ้ามีใน RAM อยู่แล้ว
+  if (_GLOBAL_PERSON_CACHE) return _GLOBAL_PERSON_CACHE;
+
   const cacheKey = 'M_PERSON_ALL';
   const cache    = CacheService.getScriptCache();
   const cached   = cache.get(cacheKey);
-  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+  if (cached) {
+    try {
+      _GLOBAL_PERSON_CACHE = JSON.parse(cached);
+      _buildPersonMaps_(_GLOBAL_PERSON_CACHE);
+      return _GLOBAL_PERSON_CACHE;
+    } catch(e) {}
+  }
 
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET.M_PERSON);
@@ -473,9 +482,43 @@ function loadAllPersons_() {
       masterUuid: String(r[PERSON_IDX.MASTER_UUID] || ''),
     }));
 
+  _GLOBAL_PERSON_CACHE = result;
+  _buildPersonMaps_(result);
+
   try { cache.put(cacheKey, JSON.stringify(result), AI_CONFIG.CACHE_TTL_SEC); }
   catch(e) { logWarn('PersonService', 'M_PERSON Cache เต็ม'); }
   return result;
+}
+
+/**
+ * _buildPersonMaps_ — [PERF v5.4.005] สร้าง Map Indexes สำหรับ O(1) lookups
+ * เรียกหลัง loadAllPersons_() ทุกครั้ง
+ */
+function _buildPersonMaps_(persons) {
+  _GLOBAL_PERSON_ID_MAP = new Map();
+  _GLOBAL_PERSON_UUID_MAP = new Map();
+  persons.forEach(function(p) {
+    if (p.personId)   _GLOBAL_PERSON_ID_MAP.set(p.personId, p);
+    if (p.masterUuid) _GLOBAL_PERSON_UUID_MAP.set(p.masterUuid, p);
+  });
+}
+
+/**
+ * getPersonById_ — [PERF v5.4.005] O(1) lookup ด้วย personId
+ */
+function getPersonById_(personId) {
+  if (!personId) return null;
+  loadAllPersons_(); // ensure loaded
+  return _GLOBAL_PERSON_ID_MAP ? _GLOBAL_PERSON_ID_MAP.get(personId) : null;
+}
+
+/**
+ * getPersonByUuid_ — [PERF v5.4.005] O(1) lookup ด้วย masterUuid
+ */
+function getPersonByUuid_(masterUuid) {
+  if (!masterUuid) return null;
+  loadAllPersons_(); // ensure loaded
+  return _GLOBAL_PERSON_UUID_MAP ? _GLOBAL_PERSON_UUID_MAP.get(masterUuid) : null;
 }
 
 function loadAllAliases_() {
@@ -497,6 +540,9 @@ function loadAllAliases_() {
 }
 
 function invalidatePersonCache_() {
+  _GLOBAL_PERSON_CACHE = null;
+  _GLOBAL_PERSON_ID_MAP = null;
+  _GLOBAL_PERSON_UUID_MAP = null;
   CacheService.getScriptCache().remove('M_PERSON_ALL');
 }
 function invalidateAliasCache_() {

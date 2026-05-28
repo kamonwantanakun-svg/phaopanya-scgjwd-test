@@ -198,15 +198,16 @@ function updateDestinationStats(destId, deliveryDate) {
     const delivDateCol   = DEST_IDX.DELIVERY_DATE  + 1;
 
     const now = new Date();
-    const currUsageCount = Number(sheet.getRange(targetRow, usageCountCol).getValue()) || 0;
 
     // สร้าง Array สำหรับ Batch Write (3 คอลัมน์ติดกัน: LAST_SEEN, USAGE_COUNT, DELIVERY_DATE)
     const minCol = Math.min(lastSeenCol, usageCountCol, delivDateCol);
     const maxCol = Math.max(lastSeenCol, usageCountCol, delivDateCol);
     const numCols = maxCol - minCol + 1;
 
-    // อ่านแถวปัจจุบัน
+    // [PERF v5.4.005] อ่านแถวปัจจุบัน ครั้งเดียว + ดึง usageCount มาด้วย ไม่ต้อง getValue() แยก
     const rowData = sheet.getRange(targetRow, minCol, 1, numCols).getValues()[0];
+
+    const currUsageCount = Number(rowData[usageCountCol - minCol]) || 0;
 
     // แก้ไขค่าที่ต้องการ
     rowData[lastSeenCol - minCol]    = now;

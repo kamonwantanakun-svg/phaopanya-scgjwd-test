@@ -115,7 +115,9 @@ function createGlobalAlias(masterUuid, variantName, entityType, confidence, sour
 
   const aliasId = generateShortId('A');
   const now = new Date();
-  sheet.appendRow([
+  // [PERF v5.4.005] เปลี่ยนจาก appendRow → getRange+setValues (Rule 4: Batch Only)
+  const lastRow = sheet.getLastRow();
+  sheet.getRange(lastRow + 1, 1, 1, 8).setValues([[
     aliasId,
     masterUuid,
     variantName,           // เก็บชื่อดิบไว้ (ยังไม่ normalize)
@@ -124,7 +126,7 @@ function createGlobalAlias(masterUuid, variantName, entityType, confidence, sour
     source || 'MANUAL',
     now,
     true
-  ]);
+  ]]);
 
   // [REMOVED v5.4.001] ไม่เรียก syncAliasToEntityTable_() อีกต่อไป
   // เพื่อป้องกัน circular dependency (createGlobalAlias → sync → createPersonAlias → createGlobalAlias)
@@ -353,9 +355,9 @@ function fastLookupByShipToName(shipToName) {
  */
 function convertUuidToPersonId(masterUuid) {
   if (!masterUuid) return null;
-  var allPersons = loadAllPersons_();
-  var hit = allPersons.find(function(p) { return p.masterUuid === masterUuid; });
-  return hit ? hit.personId : null;
+  // [PERF v5.4.005] O(1) Map lookup แทน loadAllPersons_().find() O(n)
+  var person = getPersonByUuid_(masterUuid);
+  return person ? person.personId : null;
 }
 
 /**
@@ -363,9 +365,9 @@ function convertUuidToPersonId(masterUuid) {
  */
 function convertUuidToPlaceId(masterUuid) {
   if (!masterUuid) return null;
-  var allPlaces = loadAllPlaces_();
-  var hit = allPlaces.find(function(p) { return p.masterUuid === masterUuid; });
-  return hit ? hit.placeId : null;
+  // [PERF v5.4.005] O(1) Map lookup แทน loadAllPlaces_().find() O(n)
+  var place = getPlaceByUuid_(masterUuid);
+  return place ? place.placeId : null;
 }
 
 /**
@@ -373,9 +375,9 @@ function convertUuidToPlaceId(masterUuid) {
  */
 function convertPersonIdToUuid(personId) {
   if (!personId) return null;
-  var allPersons = loadAllPersons_();
-  var hit = allPersons.find(function(p) { return p.personId === personId; });
-  return hit ? hit.masterUuid : null;
+  // [PERF v5.4.005] O(1) Map lookup แทน loadAllPersons_().find() O(n)
+  var person = getPersonById_(personId);
+  return person ? person.masterUuid : null;
 }
 
 /**
@@ -383,9 +385,9 @@ function convertPersonIdToUuid(personId) {
  */
 function convertPlaceIdToUuid(placeId) {
   if (!placeId) return null;
-  var allPlaces = loadAllPlaces_();
-  var hit = allPlaces.find(function(p) { return p.placeId === placeId; });
-  return hit ? hit.masterUuid : null;
+  // [PERF v5.4.005] O(1) Map lookup แทน loadAllPlaces_().find() O(n)
+  var place = getPlaceById_(placeId);
+  return place ? place.masterUuid : null;
 }
 
 // ============================================================

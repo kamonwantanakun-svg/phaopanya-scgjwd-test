@@ -367,13 +367,16 @@ function writeLog_(level, module, message) {
 
     // Log ID
     const logId = generateShortId('L');
-    sheet.appendRow([
+    const logRow = [
       logId, new Date(), module, level,
       String(message).substring(0, 500), '',
-    ]);
+    ];
+    // [PERF v5.4.005] เปลี่ยนจาก appendRow → getRange+setValues (Rule 4: Batch Only)
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, 1, logRow.length).setValues([logRow]);
 
     // ล้าง Log เก่าถ้าเกิน 5000 แถว
-    if (sheet.getLastRow() > 5001) {
+    if (lastRow > 5000) {
       clearOldLogs_(sheet, 1000);
     }
   } catch (e) {

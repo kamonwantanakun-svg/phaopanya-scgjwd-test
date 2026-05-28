@@ -339,13 +339,34 @@ function applyReviewDecision(reviewId, decisionVal, rowData) {
       upsertFactDelivery(srcObj, personId, placeId, geoId, destId,
         { action: 'CREATE_NEW', reason: 'REVIEW_APPROVED', confidence: 95, priority: 0 });
 
-      // อัปเดต Q_REVIEW status
-      sheet.getRange(targetRow, REVIEW_IDX.STATUS      + 1).setValue('Done');
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWER    + 1).setValue(reviewer);
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWED_AT + 1).setValue(now);
-      sheet.getRange(targetRow, REVIEW_IDX.DECISION    + 1).setValue(decisionVal);
-      sheet.getRange(targetRow, REVIEW_IDX.NOTE        + 1).setValue('Resolved (Created New)');
-      break;
+  // [PERF v5.4.005] Batch write — เขียนทุกคอลัมน์ในครั้งเดียว แทนทีละเซลล์
+  var updateCols = [
+    REVIEW_IDX.STATUS + 1,
+    REVIEW_IDX.REVIEWER + 1,
+    REVIEW_IDX.REVIEWED_AT + 1,
+    REVIEW_IDX.DECISION + 1
+  ];
+  var minCol = Math.min.apply(null, updateCols);
+  var maxCol = Math.max.apply(null, updateCols);
+  var numCols = maxCol - minCol + 1;
+  var updateRange = sheet.getRange(targetRow, minCol, 1, numCols);
+  var updateVals = updateRange.getValues();
+
+  updateVals[0][REVIEW_IDX.STATUS - minCol + 1] = 'Done';
+  updateVals[0][REVIEW_IDX.REVIEWER - minCol + 1] = reviewer;
+  updateVals[0][REVIEW_IDX.REVIEWED_AT - minCol + 1] = now;
+  updateVals[0][REVIEW_IDX.DECISION - minCol + 1] = decisionVal;
+
+  // เพิ่ม Note สำหรับ CREATE_NEW
+  if (decisionVal === 'CREATE_NEW') {
+    if (REVIEW_IDX.NOTE + 1 >= minCol && REVIEW_IDX.NOTE + 1 <= maxCol) {
+      updateVals[0][REVIEW_IDX.NOTE - minCol + 1] = 'Resolved (Created New)';
+    } else {
+      sheet.getRange(targetRow, REVIEW_IDX.NOTE + 1).setValue('Resolved (Created New)');
+    }
+  }
+  updateRange.setValues(updateVals);
+  break;
     }
 
     case 'MERGE_TO_CANDIDATE': {
@@ -362,28 +383,28 @@ function applyReviewDecision(reviewId, decisionVal, rowData) {
         }
       }
 
-      sheet.getRange(targetRow, REVIEW_IDX.STATUS      + 1).setValue('Done');
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWER    + 1).setValue(reviewer);
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWED_AT + 1).setValue(now);
-      sheet.getRange(targetRow, REVIEW_IDX.DECISION    + 1).setValue(decisionVal);
+      // [PERF v5.4.005] Batch write for MERGE_TO_CANDIDATE
+      sheet.getRange(targetRow, REVIEW_IDX.STATUS + 1, 1, 4).setValues([[
+        'Done', reviewer, now, decisionVal
+      ]]);
       break;
     }
 
     case 'ESCALATE': {
       // [FIX v003] setValue('Escalated') แล้ว return ทันที
-      sheet.getRange(targetRow, REVIEW_IDX.STATUS      + 1).setValue('Escalated');
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWER    + 1).setValue(reviewer);
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWED_AT + 1).setValue(now);
-      sheet.getRange(targetRow, REVIEW_IDX.DECISION    + 1).setValue(decisionVal);
+      // [PERF v5.4.005] Batch write
+      sheet.getRange(targetRow, REVIEW_IDX.STATUS + 1, 1, 4).setValues([[
+        'Escalated', reviewer, now, decisionVal
+      ]]);
       logInfo('ReviewService', `reviewId ${reviewId} → Escalated`);
       return; 
     }
 
     case 'IGNORE': {
-      sheet.getRange(targetRow, REVIEW_IDX.STATUS      + 1).setValue('Done');
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWER    + 1).setValue(reviewer);
-      sheet.getRange(targetRow, REVIEW_IDX.REVIEWED_AT + 1).setValue(now);
-      sheet.getRange(targetRow, REVIEW_IDX.DECISION    + 1).setValue(decisionVal);
+      // [PERF v5.4.005] Batch write
+      sheet.getRange(targetRow, REVIEW_IDX.STATUS + 1, 1, 4).setValues([[
+        'Done', reviewer, now, decisionVal
+      ]]);
       break;
     }
 

@@ -60,13 +60,22 @@
  * ===================================================
  */
 
-const APP_VERSION = '5.4.004';
-const SCHEMA_VERSION = '5.4.004';
+const APP_VERSION = '5.4.005';
+const SCHEMA_VERSION = '5.4.005';
 const APP_NAME    = 'LMDS V5.4';
 
 // [NEW v5.2.001] Global RAM Caches for batch runs
 let _GLOBAL_GEO_DICT_CACHE = null;
 let _GLOBAL_GEO_POINTS_CACHE = null;
+// [NEW v5.4.005] RAM Caches for Person & Place (reduce Sheet reads)
+let _GLOBAL_PERSON_CACHE = null;
+let _GLOBAL_PLACE_CACHE = null;
+// [NEW v5.4.005] RAM-based Map Indexes for O(1) lookups
+let _GLOBAL_PERSON_ID_MAP = null;   // Map<personId, personObj>
+let _GLOBAL_PERSON_UUID_MAP = null; // Map<masterUuid, personObj>
+let _GLOBAL_PLACE_ID_MAP = null;    // Map<placeId, placeObj>
+let _GLOBAL_PLACE_UUID_MAP = null;  // Map<masterUuid, placeObj>
+let _GLOBAL_FACT_INVOICE_MAP = null; // Map<invoiceNo, rowIndex>
 
 /**
  * invalidateAllGlobalCaches — [NEW v5.2.003] เคลียร์ค่า Cache ใน RAM ทั้งหมด
@@ -75,6 +84,14 @@ let _GLOBAL_GEO_POINTS_CACHE = null;
 function invalidateAllGlobalCaches() {
   _GLOBAL_GEO_DICT_CACHE = null;
   _GLOBAL_GEO_POINTS_CACHE = null;
+  // [NEW v5.4.005] ล้าง RAM Cache + Map Indexes
+  _GLOBAL_PERSON_CACHE = null;
+  _GLOBAL_PLACE_CACHE = null;
+  _GLOBAL_PERSON_ID_MAP = null;
+  _GLOBAL_PERSON_UUID_MAP = null;
+  _GLOBAL_PLACE_ID_MAP = null;
+  _GLOBAL_PLACE_UUID_MAP = null;
+  _GLOBAL_FACT_INVOICE_MAP = null;
 
   // เรียกฟังก์ชันล้าง Cache ในโมดูลอื่นๆ (ถ้ามี)
   if (typeof invalidatePersonCache_ === 'function') invalidatePersonCache_();

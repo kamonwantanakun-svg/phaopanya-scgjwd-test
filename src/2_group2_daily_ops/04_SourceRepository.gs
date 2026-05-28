@@ -336,20 +336,44 @@ function updateSyncStatus_(batchRows, status = 'SUCCESS') {
 
   const statusVal = (status === 'SUCCESS') ? SCG_CONFIG.SYNC_DONE_VALUE : 'ERROR';
   const statusCol = SRC_IDX.SYNC_STATUS + 1;
-  const a1Notations = batchRows.map(row => {
-    const colLetter = columnToLetterHelper(statusCol);
-    return `${colLetter}${row.sourceRow}`;
-  });
 
+  // [PERF v5.4.005] ใช้ batch getValues/setValues แทน getRangeList.setValue
+  // เพื่อลดจำนวน API calls จาก N เหลือ 1+1 (read+write)
   try {
     callSpreadsheetWithRetry(() => {
-      sheet.getRangeList(a1Notations).setValue(statusVal);
-      // [FIX v5.2.001] ถ้าเป็น ERROR ให้ทาสีแดง
-      if (status !== 'SUCCESS') {
-        sheet.getRangeList(a1Notations).setBackground('#f4cccc');
+      // อ่านคอลัมน์ SYNC_STATUS ทั้งหมด
+      const lastRow = sheet.getLastRow();
+      if (lastRow < 2) return;
+      const statusData = sheet.getRange(2, statusCol, lastRow - 1, 1).getValues();
+      
+      // อัปเดตเฉพาะแถวที่อยู่ใน batchRows
+      const rowSet = new Set(batchRows.map(r => r.sourceRow));
+      let updated = 0;
+      for (let i = 0; i < statusData.length; i++) {
+        const rowNum = i + 2;
+        if (rowSet.has(rowNum)) {
+          statusData[i][0] = statusVal;
+          updated++;
+        }
+      }
+      
+      // Batch write ทีเดียว
+      sheet.getRange(2, statusCol, lastRow - 1, 1).setValues(statusData);
+      
+      // ถ้าเป็น ERROR ให้ทาสีแดงเฉพาะแถวที่ผิดพลาด
+      if (status !== 'SUCCESS' && batchRows.length > 0) {
+        const a1Notations = batchRows.map(row => {
+          const colLetter = columnToLetterHelper(statusCol);
+          return `${colLetter}${row.sourceRow}`;
+        });
+        try {
+          sheet.getRangeList(a1Notations).setBackground('#f4cccc');
+        } catch(e) {
+          // ถ้า getRangeList ล้มเหลว ไม่เป็นไร — สีไม่สำคัญ
+        }
       }
     });
-    // [FIX v5.2.016] เคลียร์ Cache เสมอหลังจากอัปเดตสถานะ เพื่อป้องกันการเกิด Stale Cache ใน Resume Trigger
+    // [FIX v5.2.016] เคลียร์ Cache เสมอหลังจากอัปเดตสถานะ
     invalidateSourceCache();
     logDebug('SourceRepo', `อัปเดต SYNC_STATUS (${statusVal}): ${batchRows.length} แถว`);
   } catch (e) {

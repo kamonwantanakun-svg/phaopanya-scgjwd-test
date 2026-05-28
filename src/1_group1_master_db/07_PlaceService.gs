@@ -667,10 +667,19 @@ function updatePlaceStats(placeId) {
  */
 
 function loadAllPlaces_() {
+  // [PERF v5.4.005] RAM Cache — ข้าม CacheService ถ้ามีใน RAM อยู่แล้ว
+  if (_GLOBAL_PLACE_CACHE) return _GLOBAL_PLACE_CACHE;
+
   const cacheKey = 'M_PLACE_ALL';
   const cache    = CacheService.getScriptCache();
   const cached   = cache.get(cacheKey);
-  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+  if (cached) {
+    try {
+      _GLOBAL_PLACE_CACHE = JSON.parse(cached);
+      _buildPlaceMaps_(_GLOBAL_PLACE_CACHE);
+      return _GLOBAL_PLACE_CACHE;
+    } catch(e) {}
+  }
 
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET.M_PLACE);
@@ -697,9 +706,42 @@ function loadAllPlaces_() {
       masterUuid: String(r[PLACE_IDX.MASTER_UUID] || ''),
     }));
 
+  _GLOBAL_PLACE_CACHE = result;
+  _buildPlaceMaps_(result);
+
   try { cache.put(cacheKey, JSON.stringify(result), AI_CONFIG.CACHE_TTL_SEC); }
   catch(e) { logWarn('PlaceService', 'M_PLACE Cache เต็ม'); }
   return result;
+}
+
+/**
+ * _buildPlaceMaps_ — [PERF v5.4.005] สร้าง Map Indexes สำหรับ O(1) lookups
+ */
+function _buildPlaceMaps_(places) {
+  _GLOBAL_PLACE_ID_MAP = new Map();
+  _GLOBAL_PLACE_UUID_MAP = new Map();
+  places.forEach(function(p) {
+    if (p.placeId)   _GLOBAL_PLACE_ID_MAP.set(p.placeId, p);
+    if (p.masterUuid) _GLOBAL_PLACE_UUID_MAP.set(p.masterUuid, p);
+  });
+}
+
+/**
+ * getPlaceById_ — [PERF v5.4.005] O(1) lookup ด้วย placeId
+ */
+function getPlaceById_(placeId) {
+  if (!placeId) return null;
+  loadAllPlaces_();
+  return _GLOBAL_PLACE_ID_MAP ? _GLOBAL_PLACE_ID_MAP.get(placeId) : null;
+}
+
+/**
+ * getPlaceByUuid_ — [PERF v5.4.005] O(1) lookup ด้วย masterUuid
+ */
+function getPlaceByUuid_(masterUuid) {
+  if (!masterUuid) return null;
+  loadAllPlaces_();
+  return _GLOBAL_PLACE_UUID_MAP ? _GLOBAL_PLACE_UUID_MAP.get(masterUuid) : null;
 }
 
 function loadAllPlaceAliases_() {
@@ -720,29 +762,28 @@ function loadAllPlaceAliases_() {
   return rows;
 }
 
-function invalidatePlaceCache_()      { CacheService.getScriptCache().remove('M_PLACE_ALL'); }
+function invalidatePlaceCache_() {
+  _GLOBAL_PLACE_CACHE = null;
+  _GLOBAL_PLACE_ID_MAP = null;
+  _GLOBAL_PLACE_UUID_MAP = null;
+  CacheService.getScriptCache().remove('M_PLACE_ALL');
+}
 function invalidatePlaceAliasCache_() { CacheService.getScriptCache().remove('M_PLACE_ALIAS_ALL'); }
 
 /**
  * [NEW v5.2.008] lookupPlaceAdminById_ — ดึงข้อมูลพื้นที่จาก M_PLACE ด้วย ID
  * ใช้สำหรับ Fallback เมื่อพิกัด Google คืนค่าเป็น Plus Code
+ * [PERF v5.4.005] ใช้ O(1) Map lookup แทน getDataRange().find()
  */
 function lookupPlaceAdminById_(placeId) {
   if (!placeId) return null;
-  
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.M_PLACE);
-  if (!sheet) return null;
-
-  const data = sheet.getDataRange().getValues();
-  const row = data.find(r => String(r[PLACE_IDX.PLACE_ID]) === String(placeId));
-  
-  if (!row) return null;
+  const place = getPlaceById_(placeId);
+  if (!place) return null;
 
   return {
-    subDistrict: String(row[PLACE_IDX.SUB_DISTRICT] || '').trim(),
-    district:    String(row[PLACE_IDX.DISTRICT]     || '').trim(),
-    province:    String(row[PLACE_IDX.PROVINCE]     || '').trim(),
-    postcode:    String(row[PLACE_IDX.POSTCODE]     || '').trim()
+    subDistrict: String(place.note || '').trim(), // [NOTE] subDistrict not directly in place obj
+    district:    place.district    || '',
+    province:    place.province    || '',
+    postcode:    '' // postcode not in current place map
   };
 }

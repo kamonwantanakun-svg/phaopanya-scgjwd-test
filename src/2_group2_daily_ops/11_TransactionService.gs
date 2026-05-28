@@ -184,25 +184,36 @@ function upsertFactDelivery(srcObj, personId, placeId, geoId, destId, decision) 
 /**
  * findFactRowByInvoice_ — ค้นหาแถวใน FACT_DELIVERY จาก Invoice No
  * [FIX v003] extract targetInvoice นอก loop แทนแปลงทุก iteration
+ * [PERF v5.4.005] ใช้ cached Map index สำหรับ O(1) lookup แทน scan O(n)
  * @return {number} หมายเลขแถว (1-based) หรือ -1 ถ้าไม่พบ
  */
 function findFactRowByInvoice_(factSheet, invoiceNo) {
   if (!invoiceNo || factSheet.getLastRow() < 2) return -1;
 
-  // [FIX v5.2.016] ใช้ normalizeInvoiceNo เพื่อความแม่นยำ 100%
+  // [PERF v5.4.005] ใช้ cached Map index ถ้ามี
   const targetInvoice = normalizeInvoiceNo(invoiceNo);
+  if (_GLOBAL_FACT_INVOICE_MAP) {
+    var cached = _GLOBAL_FACT_INVOICE_MAP.get(targetInvoice);
+    if (cached !== undefined) return cached;
+  }
 
+  // Build map if not cached
   const invoiceCol = FACT_IDX.INVOICE_NO + 1;
   const lastRow    = factSheet.getLastRow() - 1;
   const data       = factSheet.getRange(2, invoiceCol, lastRow, 1)
                                .getValues();
 
+  // Build + cache the map
+  if (!_GLOBAL_FACT_INVOICE_MAP) _GLOBAL_FACT_INVOICE_MAP = new Map();
   for (let i = 0; i < data.length; i++) {
-    if (normalizeInvoiceNo(data[i][0]) === targetInvoice) {
-      return i + 2;
+    const normInv = normalizeInvoiceNo(data[i][0]);
+    if (normInv && !_GLOBAL_FACT_INVOICE_MAP.has(normInv)) {
+      _GLOBAL_FACT_INVOICE_MAP.set(normInv, i + 2);
     }
   }
-  return -1;
+
+  var result = _GLOBAL_FACT_INVOICE_MAP.get(targetInvoice);
+  return result !== undefined ? result : -1;
 }
 
 /**
