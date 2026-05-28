@@ -540,52 +540,74 @@ function scorePlaceCandidate(queryPlace, candidate) {
 // ============================================================
 
 function createPlace(normResult, province, district, subDistrict, postcode) {
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.M_PLACE);
-  const now   = new Date();
-  const newId = generateShortId('PL');
+  try {
+    const ss    = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.M_PLACE);
+    if (!sheet) {
+      logError('PlaceService', 'createPlace: ไม่พบชีต ' + SHEET.M_PLACE);
+      return null;
+    }
+    const now   = new Date();
+    const newId = generateShortId('PL');
 
-  // [FIX v5.2.002] รวบรวม Note ทั้งหมด (Suffix, Delivery Note)
-  const allNotes = normResult.notes || [];
+    // [FIX v5.2.002] รวบรวม Note ทั้งหมด (Suffix, Delivery Note)
+    const allNotes = normResult.notes || [];
 
-  const universalMasterId = typeof generateUUID === 'function' ? generateUUID() : generateShortId('UID');
+    const universalMasterId = typeof generateUUID === 'function' ? generateUUID() : generateShortId('UID');
 
-  const newRow = [
-    newId,
-    normResult.fullAddress || normResult.cleanPlace, // [FIX v008] ใช้ที่อยู่ที่ซ่อมแล้วเป็นชื่อหลัก (Canonical)
-    normResult.cleanPlace, // Normalized
-    normResult.placeType || 'other',
-    subDistrict || '',
-    district    || '',
-    province    || '',
-    postcode    || '',
-    now, now, 1,
-    APP_CONST.STATUS_ACTIVE,
-    allNotes.join(','), // [FIX v5.2.002] เก็บลง Note ห้ามทิ้ง
-    universalMasterId,
-  ];
+    const newRow = [
+      newId,
+      normResult.fullAddress || normResult.cleanPlace, // [FIX v008] ใช้ที่อยู่ที่ซ่อมแล้วเป็นชื่อหลัก (Canonical)
+      normResult.cleanPlace, // Normalized
+      normResult.placeType || 'other',
+      subDistrict || '',
+      district    || '',
+      province    || '',
+      postcode    || '',
+      now, now, 1,
+      APP_CONST.STATUS_ACTIVE,
+      allNotes.join(','), // [FIX v5.2.002] เก็บลง Note ห้ามทิ้ง
+      universalMasterId,
+    ];
 
-  sheet.appendRow(newRow);
-  invalidatePlaceCache_();
+    // [FIX v5.4.004] เปลี่ยนจาก appendRow → getRange+setValues (Rule 4: Batch Only)
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, 1, newRow.length).setValues([newRow]);
+    invalidatePlaceCache_();
 
-  // [REMOVED v5.4.001] ไม่เรียก createGlobalAlias() — M_ALIAS เขียนที่ autoEnrich เท่านั้น (Single Writer)
-  // autoEnrichAliasesFromFactBatch_() จะเขียน canonical+variant เข้า M_ALIAS เอง
+    // [REMOVED v5.4.001] ไม่เรียก createGlobalAlias() — M_ALIAS เขียนที่ autoEnrich เท่านั้น (Single Writer)
+    // autoEnrichAliasesFromFactBatch_() จะเขียน canonical+variant เข้า M_ALIAS เอง
 
-  logDebug('PlaceService', `createPlace: ${newId} — ${normResult.cleanPlace}`);
-  return newId;
+    logDebug('PlaceService', `createPlace: ${newId} — ${normResult.cleanPlace}`);
+    return newId;
+  } catch (err) {
+    logError('PlaceService', `createPlace ล้มเหลว: ${err.message}\n${err.stack}`);
+    return null;
+  }
 }
 
 function createPlaceAlias(placeId, aliasName, matchScore) {
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.M_PLACE_ALIAS);
-  const newId = generateShortId('PLA');
+  try {
+    const ss    = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.M_PLACE_ALIAS);
+    if (!sheet) {
+      logError('PlaceService', 'createPlaceAlias: ไม่พบชีต ' + SHEET.M_PLACE_ALIAS);
+      return;
+    }
+    const newId = generateShortId('PLA');
+    const newRow = [newId, placeId, aliasName, matchScore || 0, new Date(), true];
 
-  sheet.appendRow([newId, placeId, aliasName, matchScore || 0, new Date(), true]);
-  invalidatePlaceAliasCache_();
+    // [FIX v5.4.004] เปลี่ยนจาก appendRow → getRange+setValues (Rule 4: Batch Only)
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, 1, newRow.length).setValues([newRow]);
+    invalidatePlaceAliasCache_();
 
-  // [REMOVED v5.4.001] ไม่เรียก createGlobalAlias() — M_ALIAS เขียนที่ autoEnrich เท่านั้น (Single Writer)
+    // [REMOVED v5.4.001] ไม่เรียก createGlobalAlias() — M_ALIAS เขียนที่ autoEnrich เท่านั้น (Single Writer)
 
-  logDebug('PlaceService', `createPlaceAlias: ${aliasName} → ${placeId}`);
+    logDebug('PlaceService', `createPlaceAlias: ${aliasName} → ${placeId}`);
+  } catch (err) {
+    logError('PlaceService', `createPlaceAlias ล้มเหลว: ${err.message}`);
+  }
 }
 
 /**

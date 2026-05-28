@@ -60,8 +60,8 @@
  * ===================================================
  */
 
-const APP_VERSION = '5.4.001';
-const SCHEMA_VERSION = '5.4.001';
+const APP_VERSION = '5.4.004';
+const SCHEMA_VERSION = '5.4.004';
 const APP_NAME    = 'LMDS V5.4';
 
 // [NEW v5.2.001] Global RAM Caches for batch runs

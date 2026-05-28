@@ -208,68 +208,73 @@ function buildGridKey_(lat, lng) {
  * [FIX v003] Validate lat/lng เป็น Number ก่อน appendRow
  */
 function createGeoPoint(lat, lng, source, resolvedAddr, province, district, placeId) {
-  // [FIX v003] Validate เป็น Number จริง
-  const numLat = Number(lat);
-  const numLng = Number(lng);
+  try {
+    // [FIX v003] Validate เป็น Number จริง
+    const numLat = Number(lat);
+    const numLng = Number(lng);
 
-  if (isNaN(numLat) || isNaN(numLng)) {
-    logError('GeoService', `createGeoPoint: lat/lng ไม่ใช่ตัวเลข (${lat}, ${lng})`);
-    return null;
-  }
+    if (isNaN(numLat) || isNaN(numLng)) {
+      logError('GeoService', `createGeoPoint: lat/lng ไม่ใช่ตัวเลข (${lat}, ${lng})`);
+      return null;
+    }
 
-  // [FIX v5.2.008] Fallback Logic: ถ้าข้อมูลพื้นที่ว่าง (มักเกิดจาก Plus Code) ให้ดึงจาก M_PLACE มาเติม
-  let finalProv = province || '';
-  let finalDist = district || '';
-  let extractionMethod = 'google';
+    // [FIX v5.2.008] Fallback Logic: ถ้าข้อมูลพื้นที่ว่าง (มักเกิดจาก Plus Code) ให้ดึงจาก M_PLACE มาเติม
+    let finalProv = province || '';
+    let finalDist = district || '';
+    let extractionMethod = 'google';
 
-  if ((!finalProv || !finalDist) && (resolvedAddr || '').includes('+')) {
-    if (typeof lookupPlaceAdminById_ === 'function') {
-      const fallback = lookupPlaceAdminById_(placeId);
-      if (fallback) {
-        if (!finalProv) finalProv = fallback.province;
-        if (!finalDist) finalDist = fallback.district;
-        extractionMethod = 'place_fallback';
+    if ((!finalProv || !finalDist) && (resolvedAddr || '').includes('+')) {
+      if (typeof lookupPlaceAdminById_ === 'function') {
+        const fallback = lookupPlaceAdminById_(placeId);
+        if (fallback) {
+          if (!finalProv) finalProv = fallback.province;
+          if (!finalDist) finalDist = fallback.district;
+          extractionMethod = 'place_fallback';
+        }
       }
     }
-  }
 
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.M_GEO_POINT);
-  if (!sheet) {
-    logError('GeoService', `ไม่พบชีต ${SHEET.M_GEO_POINT}`);
+    const ss    = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.M_GEO_POINT);
+    if (!sheet) {
+      logError('GeoService', `ไม่พบชีต ${SHEET.M_GEO_POINT}`);
+      return null;
+    }
+    const now   = new Date();
+    const newId = generateShortId('G');
+
+    // กำหนด default confidence ตาม source
+    let defaultConf = 85;
+    if (source === 'maps')   defaultConf = 90;
+    if (source === 'manual') defaultConf = 75;
+    if (source === 'driver') defaultConf = 80;
+
+    const newRow = [
+      newId,
+      numLat,
+      numLng,
+      AI_CONFIG.GEO_RADIUS_M,
+      resolvedAddr || '',
+      finalProv,
+      finalDist,
+      source || 'driver',
+      defaultConf,
+      now, now, 1,
+      APP_CONST.STATUS_ACTIVE,
+      extractionMethod // [NEW v5.2.008] บันทึกแหล่งที่มาเพื่อ Audit
+    ];
+
+    // [FIX v5.2.002] ใช้ getRange + setValues แทน appendRow เพื่อความแม่นยำสูง
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, 1, newRow.length).setValues([newRow]);
+    
+    invalidateGeoCache_();
+    logDebug('GeoService', `createGeoPoint: ${newId} — ${finalProv} ${finalDist} (${extractionMethod})`);
+    return newId;
+  } catch (err) {
+    logError('GeoService', `createGeoPoint ล้มเหลว: ${err.message}\n${err.stack}`);
     return null;
   }
-  const now   = new Date();
-  const newId = generateShortId('G');
-
-  // กำหนด default confidence ตาม source
-  let defaultConf = 85;
-  if (source === 'maps')   defaultConf = 90;
-  if (source === 'manual') defaultConf = 75;
-  if (source === 'driver') defaultConf = 80;
-
-  const newRow = [
-    newId,
-    numLat,
-    numLng,
-    AI_CONFIG.GEO_RADIUS_M,
-    resolvedAddr || '',
-    finalProv,
-    finalDist,
-    source || 'driver',
-    defaultConf,
-    now, now, 1,
-    APP_CONST.STATUS_ACTIVE,
-    extractionMethod // [NEW v5.2.008] บันทึกแหล่งที่มาเพื่อ Audit
-  ];
-
-  // [FIX v5.2.002] ใช้ getRange + setValues แทน appendRow เพื่อความแม่นยำสูง
-  const lastRow = sheet.getLastRow();
-  sheet.getRange(lastRow + 1, 1, 1, newRow.length).setValues([newRow]);
-  
-  invalidateGeoCache_();
-  logDebug('GeoService', `createGeoPoint: ${newId} — ${finalProv} ${finalDist} (${extractionMethod})`);
-  return newId;
 }
 
 /**

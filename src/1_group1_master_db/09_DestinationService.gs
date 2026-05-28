@@ -112,45 +112,56 @@ function resolveDestination(personId, placeId, geoId) {
  * [FIX v003] Number() validate lat/lng
  */
 function createDestination(personId, placeId, geoId, lat, lng, deliveryDate) {
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.M_DESTINATION);
-  const now   = new Date();
-  const newId = generateShortId('D');
+  try {
+    const ss    = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.M_DESTINATION);
+    if (!sheet) {
+      logError('DestinationService', 'createDestination: ไม่พบชีต ' + SHEET.M_DESTINATION);
+      return null;
+    }
+    const now   = new Date();
+    const newId = generateShortId('D');
 
-  // [FIX v003] Validate lat/lng เป็น Number
-  const numLat = Number(lat);
-  const numLng = Number(lng);
-  const safeLat = !isNaN(numLat) ? numLat : 0;
-  const safeLng = !isNaN(numLng) ? numLng : 0;
+    // [FIX v003] Validate lat/lng เป็น Number
+    const numLat = Number(lat);
+    const numLng = Number(lng);
+    const safeLat = !isNaN(numLat) ? numLat : 0;
+    const safeLng = !isNaN(numLng) ? numLng : 0;
 
-  // [FIX v003] deliveryDate instanceof Date check แทน || now
-  let safeDate = now;
-  if (deliveryDate instanceof Date && !isNaN(deliveryDate.getTime())) {
-    safeDate = deliveryDate;
-  } else if (deliveryDate) {
-    const parsed = new Date(deliveryDate);
-    safeDate = !isNaN(parsed.getTime()) ? parsed : now;
+    // [FIX v003] deliveryDate instanceof Date check แทน || now
+    let safeDate = now;
+    if (deliveryDate instanceof Date && !isNaN(deliveryDate.getTime())) {
+      safeDate = deliveryDate;
+    } else if (deliveryDate) {
+      const parsed = new Date(deliveryDate);
+      safeDate = !isNaN(parsed.getTime()) ? parsed : now;
+    }
+
+    const newRow = [
+      newId,
+      personId  || '',
+      placeId   || '',
+      geoId     || '',
+      safeLat,
+      safeLng,
+      '',
+      safeDate,
+      1,
+      now,
+      APP_CONST.STATUS_ACTIVE,
+    ];
+
+    // [FIX v5.4.004] เปลี่ยนจาก appendRow → getRange+setValues (Rule 4: Batch Only)
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, 1, newRow.length).setValues([newRow]);
+    invalidateDestCache_();
+    logDebug('DestinationService',
+      `createDestination: ${newId} P:${personId} PL:${placeId} G:${geoId}`);
+    return newId;
+  } catch (err) {
+    logError('DestinationService', `createDestination ล้มเหลว: ${err.message}\n${err.stack}`);
+    return null;
   }
-
-  const newRow = [
-    newId,
-    personId  || '',
-    placeId   || '',
-    geoId     || '',
-    safeLat,
-    safeLng,
-    '',
-    safeDate,
-    1,
-    now,
-    APP_CONST.STATUS_ACTIVE,
-  ];
-
-  sheet.appendRow(newRow);
-  invalidateDestCache_();
-  logDebug('DestinationService',
-    `createDestination: ${newId} P:${personId} PL:${placeId} G:${geoId}`);
-  return newId;
 }
 
 /**

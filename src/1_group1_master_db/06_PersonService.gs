@@ -257,53 +257,75 @@ function scorePersonCandidate(queryName, candidate, queryPhone) {
  * createPerson — สร้างบุคคลใหม่ใน M_PERSON
  */
 function createPerson(normResult) {
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.M_PERSON);
-  const now   = new Date();
-  const newId = generateShortId('P');
+  try {
+    const ss    = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.M_PERSON);
+    if (!sheet) {
+      logError('PersonService', 'createPerson: ไม่พบชีต ' + SHEET.M_PERSON);
+      return null;
+    }
+    const now   = new Date();
+    const newId = generateShortId('P');
 
-  const phoneStr = normResult.extractedPhone
-    ? "'" + normResult.extractedPhone : '';
+    const phoneStr = normResult.extractedPhone
+      ? "'" + normResult.extractedPhone : '';
 
-  // [FIX v5.2.002] รวบรวม Note ทั้งหมด (Phone, Doc, Prefix)
-  const allNotes = normResult.deliveryNotes || [];
+    // [FIX v5.2.002] รวบรวม Note ทั้งหมด (Phone, Doc, Prefix)
+    const allNotes = normResult.deliveryNotes || [];
 
-  const universalMasterId = typeof generateUUID === 'function' ? generateUUID() : generateShortId('UID');
+    const universalMasterId = typeof generateUUID === 'function' ? generateUUID() : generateShortId('UID');
 
-  const newRow = [
-    newId,
-    normResult.cleanName,
-    normalizeForCompare(normResult.cleanName),
-    phoneStr,
-    now, now, 1,
-    APP_CONST.STATUS_ACTIVE,
-    allNotes.join(','),
-    universalMasterId,
-  ];
+    const newRow = [
+      newId,
+      normResult.cleanName,
+      normalizeForCompare(normResult.cleanName),
+      phoneStr,
+      now, now, 1,
+      APP_CONST.STATUS_ACTIVE,
+      allNotes.join(','),
+      universalMasterId,
+    ];
 
-  sheet.appendRow(newRow);
-  invalidatePersonCache_();
-  logDebug('PersonService', `createPerson: ${newId} — ${normResult.cleanName}`);
+    // [FIX v5.4.004] เปลี่ยนจาก appendRow → getRange+setValues (Rule 4: Batch Only)
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, 1, newRow.length).setValues([newRow]);
+    invalidatePersonCache_();
+    logDebug('PersonService', `createPerson: ${newId} — ${normResult.cleanName}`);
 
-  // [REMOVED v5.4.001] ไม่เรียก createGlobalAlias() — M_ALIAS เขียนที่ autoEnrich เท่านั้น (Single Writer)
-  // autoEnrichAliasesFromFactBatch_() จะเขียน canonical+variant เข้า M_ALIAS เอง
+    // [REMOVED v5.4.001] ไม่เรียก createGlobalAlias() — M_ALIAS เขียนที่ autoEnrich เท่านั้น (Single Writer)
+    // autoEnrichAliasesFromFactBatch_() จะเขียน canonical+variant เข้า M_ALIAS เอง
 
-  return newId;
+    return newId;
+  } catch (err) {
+    logError('PersonService', `createPerson ล้มเหลว: ${err.message}\n${err.stack}`);
+    return null;
+  }
 }
 
 /**
  * createPersonAlias — เพิ่มชื่อสำรองให้บุคคล
  */
 function createPersonAlias(personId, aliasName, matchScore) {
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.M_PERSON_ALIAS);
-  const newId = generateShortId('PA');
+  try {
+    const ss    = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.M_PERSON_ALIAS);
+    if (!sheet) {
+      logError('PersonService', 'createPersonAlias: ไม่พบชีต ' + SHEET.M_PERSON_ALIAS);
+      return;
+    }
+    const newId = generateShortId('PA');
+    const newRow = [newId, personId, aliasName, matchScore || 0, new Date(), true];
 
-  sheet.appendRow([newId, personId, aliasName, matchScore || 0, new Date(), true]);
-  invalidateAliasCache_();
-  logDebug('PersonService', `createPersonAlias: ${aliasName} → ${personId}`);
+    // [FIX v5.4.004] เปลี่ยนจาก appendRow → getRange+setValues (Rule 4: Batch Only)
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, 1, newRow.length).setValues([newRow]);
+    invalidateAliasCache_();
+    logDebug('PersonService', `createPersonAlias: ${aliasName} → ${personId}`);
 
-  // [REMOVED v5.4.001] ไม่เรียก createGlobalAlias() — M_ALIAS เขียนที่ autoEnrich เท่านั้น (Single Writer)
+    // [REMOVED v5.4.001] ไม่เรียก createGlobalAlias() — M_ALIAS เขียนที่ autoEnrich เท่านั้น (Single Writer)
+  } catch (err) {
+    logError('PersonService', `createPersonAlias ล้มเหลว: ${err.message}`);
+  }
 }
 
 /**
