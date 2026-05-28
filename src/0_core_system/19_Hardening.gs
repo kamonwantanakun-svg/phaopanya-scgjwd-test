@@ -71,6 +71,7 @@
  * runPreflightAudit — [MAIN] ตรวจสอบความพร้อมของระบบก่อนรัน Pipeline
  */
 function runPreflightAudit() {
+  try {
   const ui = SpreadsheetApp.getUi();
   const logs = [];
   let errorCount = 0;
@@ -121,12 +122,17 @@ function runPreflightAudit() {
     const report = logs.join('\n');
     ui.alert(`📊 ผลการตรวจสอบ Preflight Audit:\n\n${report}\n\nพบจุดที่ควรตรวจสอบ ${logs.length} รายการ`);
   }
+  } catch (err) {
+    logError('runPreflightAudit', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ runPreflightAudit ล้มเหลว:\n' + err.message);
+  }
 }
 
 /**
  * fixMissingSyncStatus — เติมค่า PENDING ให้แถวที่ว่างใน Source
  */
 function fixMissingSyncStatus() {
+  try {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET.SOURCE);
   if (!sheet) return;
@@ -149,6 +155,10 @@ function fixMissingSyncStatus() {
   if (fixed > 0) {
     range.setValues(data);
     SpreadsheetApp.getActiveSpreadsheet().toast(`✅ ซ่อมแซมสถานะ Sync สำเร็จ: ${fixed} แถว`, 'Hardening');
+  }
+  } catch (err) {
+    logError('fixMissingSyncStatus', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ fixMissingSyncStatus ล้มเหลว:\n' + err.message);
   }
 }
 
@@ -209,7 +219,10 @@ function generatePersonAliasesFromHistory() {
   ss.toast('กำลังวิเคราะห์ประวัติการจัดส่งเพื่อสร้าง Alias...', 'Processing', 5);
 
   const factData = factSheet.getRange(2, 1, factRows - 1, SCHEMA[SHEET.FACT_DELIVERY].length).getValues();
-  
+
+  var startTime = new Date();
+  var timeLimit = AI_CONFIG.TIME_LIMIT_MS || (5 * 60 * 1000);
+
   // โหลดรายชื่อ Person หลักเพื่อตรวจสอบ
   const allPersons = loadAllPersons_();
   const personMap = new Map();
@@ -240,17 +253,22 @@ function generatePersonAliasesFromHistory() {
   const globalAliasCalls = []; // [FIX v5.4.000] เก็บข้อมูลสำหรับเขียน M_ALIAS
   let addedCount = 0;
 
-  factData.forEach(r => {
+  for (var fi = 0; fi < factData.length; fi++) {
+    if (fi % 50 === 0 && hasTimePassed_(startTime, timeLimit)) {
+      logWarn('generatePersonAliasesFromHistory', 'Time Guard: หยุดที่แถว ' + fi);
+      break;
+    }
+    var r = factData[fi];
     const pId = String(r[FACT_IDX.PERSON_ID] || '').trim();
     const rawName = String(r[FACT_IDX.SHIP_TO_NAME] || '').trim();
-    if (!pId || !rawName) return;
+    if (!pId || !rawName) continue;
 
     const rawNorm = normalizeForCompare(rawName);
-    if (!rawNorm || rawNorm.length < 2) return;
+    if (!rawNorm || rawNorm.length < 2) continue;
 
     // เช็คว่าชื่อดิบตรงกับ Canonical อยู่แล้วหรือไม่
     const canonicalNorm = personMap.get(pId);
-    if (canonicalNorm && canonicalNorm === rawNorm) return;
+    if (canonicalNorm && canonicalNorm === rawNorm) continue;
 
     const key = pId + '::' + rawNorm;
     if (!existingAliasSet.has(key)) {
@@ -277,7 +295,7 @@ function generatePersonAliasesFromHistory() {
         });
       }
     }
-  });
+  }
 
   if (newAliasRows.length > 0) {
     // บันทึกแบบ Batch

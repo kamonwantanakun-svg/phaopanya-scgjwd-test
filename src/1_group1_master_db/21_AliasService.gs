@@ -1,5 +1,5 @@
 /**
- * VERSION: 5.4.001
+ * VERSION: 5.4.006
  * FILE: 21_AliasService.gs
  * LMDS V5.4 — Hybrid Alias Architecture (Global M_ALIAS + Entity-Specific Views)
  * ===================================================
@@ -9,6 +9,9 @@
  *   ⚠️ Auto Pipeline ไม่เขียน M_ALIAS ที่นี่ — เขียนที่ autoEnrichAliasesFromFactBatch_() เท่านั้น
  * ===================================================
  * CHANGELOG:
+ *   v5.4.006 (2026-03-05) — M2 + M3 Refactor:
+ *     - [PERF M2] resolveMasterUuidViaGlobalAlias: O(1) Reverse Index lookup แทน O(N) linear scan
+ *     - [ADD M3] createGlobalAliasBatch_(): Batch variant ด้วย setValues() สำหรับ Migration/Admin
  *   v5.4.001 (2026-05-24) — Single Writer Pattern:
  *     - [REMOVE] syncAliasToEntityTable_(): ลบฟังก์ชัน sync ย้อน เพราะทำให้เกิด circular dependency
  *     - [REMOVE] createGlobalAlias(): ลบ syncAliasToEntityTable_() call — เขียนแค่ M_ALIAS
@@ -140,6 +143,60 @@ function createGlobalAlias(masterUuid, variantName, entityType, confidence, sour
   return aliasId;
 }
 
+/**
+ * createGlobalAliasBatch_ — [NEW v5.4.006] M3 Batch Variant
+ * สร้างหลาย Alias พร้อมกันด้วย setValues() แทน appendRow() ทีละแถว
+ * ใช้สำหรับ Migration/Admin เท่านั้น (ไม่ใช่ auto pipeline)
+ * @param {Array} aliasCalls — [{masterUuid, variantName, entityType, confidence, source}]
+ * @return {number} จำนวน alias ที่สร้างสำเร็จ
+ */
+function createGlobalAliasBatch_(aliasCalls) {
+  if (!aliasCalls || aliasCalls.length === 0) return 0;
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET.M_ALIAS);
+  if (!sheet) return 0;
+
+  var existingMap = loadGlobalAliasesMap_();
+  var now = new Date();
+  var newRows = [];
+  var addedCount = 0;
+
+  aliasCalls.forEach(function(call) {
+    if (!call.masterUuid || !call.variantName || !call.entityType) return;
+    var cleanVariant = normalizeForCompare(call.variantName);
+    if (!cleanVariant || cleanVariant.length < 2) return;
+
+    var uidKey = call.entityType + '_' + call.masterUuid;
+    if (existingMap[uidKey] && existingMap[uidKey].includes(cleanVariant)) return;
+
+    // เพิ่มเข้า dedup map ทันที
+    if (!existingMap[uidKey]) existingMap[uidKey] = [];
+    existingMap[uidKey].push(cleanVariant);
+
+    newRows.push([
+      generateShortId('A'),
+      call.masterUuid,
+      call.variantName,
+      call.entityType,
+      call.confidence || 100,
+      call.source || 'BATCH_ADMIN',
+      now,
+      true
+    ]);
+    addedCount++;
+  });
+
+  if (newRows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, SCHEMA[SHEET.M_ALIAS].length).setValues(newRows);
+    CacheService.getScriptCache().remove('M_GLOBAL_ALIAS_ALL');
+    CacheService.getScriptCache().remove('M_GLOBAL_ALIAS_REVERSE');
+  }
+
+  logInfo('AliasService', 'createGlobalAliasBatch: สร้าง ' + addedCount + ' alias ใหม่ (Batch Write)');
+  return addedCount;
+}
+
 // ============================================================
 // SECTION 2: loadGlobalAliasesMap_ — โหลดข้อมูล M_ALIAS ทั้งหมดเข้า RAM
 // ============================================================
@@ -228,6 +285,7 @@ function loadGlobalAliasReverseIndex_() {
 /**
  * resolveMasterUuidViaGlobalAlias — ค้นหา masterUuid จาก variant name
  * ใช้โดย findPersonCandidates() และ findPlaceCandidates()
+ * [PERF v5.4.006] O(1) Lookup ด้วย Reverse Index แทน O(N) linear scan
  * @param {string} queryName - ชื่อที่ต้องการค้นหา
  * @param {string} entityType - 'PERSON' หรือ 'PLACE'
  * @return {Object|null} { masterUuid, score } หรือ null
@@ -236,32 +294,36 @@ function resolveMasterUuidViaGlobalAlias(queryName, entityType) {
   var cleanQ = normalizeForCompare(queryName);
   if (!cleanQ || cleanQ.length < 2) return { masterUuid: null, score: 0 };
 
-  var aliasesMap = loadGlobalAliasesMap_();
-  var bestMatch = null;
-  var bestScore = 0;
+  // [PERF v5.4.006] O(1) Lookup ด้วย Reverse Index แทน O(N) linear scan
+  var reverseIndex = loadGlobalAliasReverseIndex_();
 
-  for (var dictKey in aliasesMap) {
-    if (!dictKey.startsWith(entityType + '_')) continue;
-    var variants = aliasesMap[dictKey];
-
-    for (var i = 0; i < variants.length; i++) {
-      var v = variants[i];
-      var score = 0;
-
-      if (v === cleanQ) {
-        score = 100; // Exact match
-      } else if (v.length >= 4 && cleanQ.includes(v)) {
-        score = 95; // Substring match
-      } else if (cleanQ.length >= 4 && v.includes(cleanQ)) {
-        score = 90; // Reverse substring match
-      }
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestMatch = dictKey.replace(entityType + '_', '');
+  // 1. Exact match (O(1))
+  var matches = reverseIndex[cleanQ];
+  if (matches && matches.length > 0) {
+    for (var i = 0; i < matches.length; i++) {
+      if (matches[i].entityType === entityType) {
+        return { masterUuid: matches[i].masterUuid, score: 100 };
       }
     }
-    if (bestScore === 100) break; // พบ exact match แล้ว ไม่ต้องหาต่อ
+  }
+
+  // 2. Substring match fallback (O(N) but only on miss)
+  var bestMatch = null;
+  var bestScore = 0;
+  for (var key in reverseIndex) {
+    var entries = reverseIndex[key];
+    if (key.length >= 4 && (cleanQ.includes(key) || key.includes(cleanQ))) {
+      for (var j = 0; j < entries.length; j++) {
+        if (entries[j].entityType === entityType) {
+          var score = cleanQ.includes(key) ? 95 : 90;
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = entries[j].masterUuid;
+          }
+        }
+      }
+    }
+    if (bestScore === 100) break;
   }
 
   return { masterUuid: bestMatch, score: bestScore };
@@ -637,6 +699,9 @@ function MIGRATION_HybridAliasSystem() {
  * @return {number} จำนวน alias ที่สร้างใหม่
  */
 function populateAliasFromSCGRawData_() {
+  var startTime = new Date();
+  var timeLimit = AI_CONFIG.TIME_LIMIT_MS || (5 * 60 * 1000);
+
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sourceSheet = ss.getSheetByName(SHEET.SOURCE);
   if (!sourceSheet || sourceSheet.getLastRow() < 2) {
@@ -680,7 +745,13 @@ function populateAliasFromSCGRawData_() {
   });
 
   var aliasCount = 0;
+  var scgIdx = 0;
   for (var normKey in nameCount) {
+    scgIdx++;
+    if (scgIdx % 50 === 0 && hasTimePassed_(startTime, timeLimit)) {
+      logWarn('populateAliasFromSCGRawData_', 'Time Guard: หยุดที่แถว ' + scgIdx);
+      break;
+    }
     var info = nameCount[normKey];
     var rawName = info.rawName;
 
@@ -733,6 +804,9 @@ function populateAliasFromSCGRawData_() {
  * @return {number} จำนวน alias ที่สร้างใหม่
  */
 function populateAliasFromFactDelivery_() {
+  var startTime = new Date();
+  var timeLimit = AI_CONFIG.TIME_LIMIT_MS || (5 * 60 * 1000);
+
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var factSheet = ss.getSheetByName(SHEET.FACT_DELIVERY);
   if (!factSheet || factSheet.getLastRow() < 2) return 0;
@@ -755,7 +829,13 @@ function populateAliasFromFactDelivery_() {
   });
 
   var aliasCount = 0;
+  var factIdx = 0;
   for (var normKey in nameMap) {
+    factIdx++;
+    if (factIdx % 50 === 0 && hasTimePassed_(startTime, timeLimit)) {
+      logWarn('populateAliasFromFactDelivery_', 'Time Guard: หยุดที่แถว ' + factIdx);
+      break;
+    }
     var info = nameMap[normKey];
 
     // ลอง Person ก่อน

@@ -196,6 +196,7 @@ function onEdit(e) {
  * Installable Trigger มีสิทธิ์เต็มรูปแบบ รวมถึง UI dialog
  */
 function installSmartNavTrigger() {
+  try {
   // ลบ Smart Nav trigger เก่าก่อน (ถ้ามี)
   const triggers = ScriptApp.getProjectTriggers();
   let deletedCount = 0;
@@ -218,6 +219,10 @@ function installSmartNavTrigger() {
     'วิธีใช้: ไปที่ชีต Q_REVIEW แล้วคลิกที่ช่อง Candidate ID (คอลัมน์ L-O)\n' +
     'ระบบจะถามว่าต้องการนำทางไปตารางหลัก (Master) หรือ ประวัติขนส่ง (FACT)'
   );
+  } catch (err) {
+    logError('installSmartNavTrigger', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ installSmartNavTrigger ล้มเหลว:\n' + err.message);
+  }
 }
 
 /**

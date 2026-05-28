@@ -76,6 +76,7 @@
  * @param {string} scgLatLng  - LatLong_SCG จาก API (Fallback)
  */
 function findBestGeoByPersonPlace(rawPerson, rawPlace, scgLatLng) {
+  try {
 
   // --- Step 1: Normalize ---
   const normPerson = normalizePersonNameFull(rawPerson);
@@ -193,6 +194,15 @@ function findBestGeoByPersonPlace(rawPerson, rawPlace, scgLatLng) {
     'NOT_FOUND', 0, null,
     `ไม่พบข้อมูล — Person:${cleanName || '?'} Place:${cleanPlace || '?'}`
   );
+
+  } catch (err) {
+    logError('findBestGeoByPersonPlace', err.message + '\n' + err.stack);
+    return buildSearchResult_(
+      null, null,
+      'NOT_FOUND', 0, null,
+      'findBestGeoByPersonPlace ล้มเหลว: ' + err.message
+    );
+  }
 }
 
 /**
@@ -248,6 +258,7 @@ function buildSearchResult_(lat, lng, status, confidence, destId, reason) {
  * [ADD v003] Time Guard ป้องกัน Timeout
  */
 function runLookupEnrichment() {
+  try {
   const ss        = SpreadsheetApp.getActiveSpreadsheet();
   const sheet     = ss.getSheetByName(SHEET.DAILY_JOB);
 
@@ -373,6 +384,11 @@ function runLookupEnrichment() {
 
   logInfo('SearchService', msg.replace(/\n/g, ' '));
   ss.toast(msg, APP_NAME, 8);
+
+  } catch (err) {
+    logError('runLookupEnrichment', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ runLookupEnrichment ล้มเหลว:\n' + err.message);
+  }
 }
 
 // ============================================================

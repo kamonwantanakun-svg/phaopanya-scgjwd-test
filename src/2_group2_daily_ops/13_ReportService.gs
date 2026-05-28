@@ -72,6 +72,7 @@
  * [FIX v003] guard ui.alert() กัน Trigger Error
  */
 function buildFullQualityReport() {
+  try {
   const ss       = SpreadsheetApp.getActiveSpreadsheet();
   const rptSheet = ss.getSheetByName(SHEET.RPT_QUALITY);
 
@@ -191,6 +192,10 @@ function buildFullQualityReport() {
     `  Geo:     ${geoCount}\n` +
     `  Dest:    ${destCount}`
   );
+  } catch (err) {
+    logError('buildFullQualityReport', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ buildFullQualityReport ล้มเหลว:\n' + err.message);
+  }
 }
 
 // ============================================================

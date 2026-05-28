@@ -85,6 +85,9 @@ function buildGeoDictionary() {
 
   logInfo('GeoDictBuilder', 'เริ่มสร้าง Geo Dictionary');
 
+  var startTime = new Date();
+  var timeLimit = AI_CONFIG.TIME_LIMIT_MS || (5 * 60 * 1000);
+
   const colsToRead = SCHEMA[SHEET.SYS_TH_GEO].length;
   const totalRows  = sheet.getLastRow() - 1;
   const allData    = sheet.getRange(2, 1, totalRows, colsToRead).getValues();
@@ -93,13 +96,18 @@ function buildGeoDictionary() {
   const provinceSet  = new Set();
   const districtMap  = {};
 
-  allData.forEach(row => {
+  for (var gi = 0; gi < allData.length; gi++) {
+    if (gi % 50 === 0 && hasTimePassed_(startTime, timeLimit)) {
+      logWarn('buildGeoDictionary', 'Time Guard: หยุดที่แถว ' + gi);
+      break;
+    }
+    var row = allData[gi];
     const postcode   = String(row[TH_GEO_IDX.POSTCODE]     || '').trim().padStart(5, '0');
     const subDistrict= String(row[TH_GEO_IDX.SUB_DISTRICT] || '').trim();
     const district   = String(row[TH_GEO_IDX.DISTRICT]     || '').trim();
     const province   = String(row[TH_GEO_IDX.PROVINCE]     || '').trim();
 
-    if (!province) return;
+    if (!province) continue;
 
     // [UPGRADE v5.2.008] Cache full row data for ThGeoService
     if (postcode && postcode !== '00000' && !postcodeMap[postcode]) {
@@ -115,7 +123,7 @@ function buildGeoDictionary() {
 
     if (!districtMap[province]) districtMap[province] = new Set();
     if (district) districtMap[province].add(district);
-  });
+  }
 
   const districtMapArr = {};
   Object.keys(districtMap).forEach(prov => {

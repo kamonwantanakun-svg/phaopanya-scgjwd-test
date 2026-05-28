@@ -101,6 +101,9 @@ function extractGeoFromAddress(rawText) {
  */
 function populateGeoMetadata() {
   try {
+  var startTime = new Date();
+  var timeLimit = AI_CONFIG.TIME_LIMIT_MS || (5 * 60 * 1000);
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET.SYS_TH_GEO);
   if (!sheet) return;
@@ -158,6 +161,13 @@ function populateGeoMetadata() {
 
     return row;
   });
+
+  // Time Guard: ตรวจสอบก่อนเขียนชีต
+  if (hasTimePassed_(startTime, timeLimit)) {
+    logWarn('populateGeoMetadata', 'Time Guard: ข้ามการเขียนชีตเพราะใกล้ Timeout — กรุณารันใหม่');
+    safeAlert_('⚠️ populateGeoMetadata: หมดเวลาก่อนเขียนชีต\nกรุณารันอีกครั้งเพื่อดำเนินการต่อ');
+    return;
+  }
 
   sheet.getRange(2, 1, updatedRows.length, updatedRows[0].length).setValues(updatedRows);
   logInfo('GeoMigration', 'เติมข้อมูล Metadata เสร็จสิ้น!');

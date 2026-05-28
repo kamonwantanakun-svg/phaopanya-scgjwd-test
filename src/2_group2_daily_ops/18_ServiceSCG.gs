@@ -379,6 +379,7 @@ function buildShipmentSummary() {
 // ============================================================
 
 function clearAllSCGSheets_UI() {
+  try {
   const ui = SpreadsheetApp.getUi();
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -396,6 +397,10 @@ function clearAllSCGSheets_UI() {
 
   logInfo('ServiceSCG', `clearAllSCGSheets_UI: ล้าง ${cleared} ชีต`);
   ui.alert(`✅ ล้างข้อมูล ${cleared} ชีตเรียบร้อย`);
+  } catch (err) {
+    logError('clearAllSCGSheets_UI', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ clearAllSCGSheets_UI ล้มเหลว:\n' + err.message);
+  }
 }
 
 function clearDailyJobLatLng() {

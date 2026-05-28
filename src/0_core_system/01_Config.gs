@@ -60,31 +60,59 @@
  * ===================================================
  */
 
-const APP_VERSION = '5.4.005';
-const SCHEMA_VERSION = '5.4.005';
+const APP_VERSION = '5.4.006';
+const SCHEMA_VERSION = '5.4.006';
 const APP_NAME    = 'LMDS V5.4';
 
-// [NEW v5.2.001] Global RAM Caches for batch runs
+// ============================================================
+// SECTION 0.5: CacheManager Module — [NEW v5.4.006] M4 Closure Pattern
+// ย้าย Global Variables _GLOBAL_* เข้า CacheManager Closure
+// ============================================================
+
+const CacheManager = (function() {
+  // Private state — ซ่อนจาก Global Scope
+  var _store = {
+    GEO_DICT_CACHE: null,
+    GEO_POINTS_CACHE: null,
+    PERSON_CACHE: null,
+    PLACE_CACHE: null,
+    PERSON_ID_MAP: null,
+    PERSON_UUID_MAP: null,
+    PLACE_ID_MAP: null,
+    PLACE_UUID_MAP: null,
+    FACT_INVOICE_MAP: null,
+  };
+
+  return {
+    get: function(key) { return _store[key] || null; },
+    set: function(key, value) { _store[key] = value; },
+    clear: function(key) { _store[key] = null; },
+    clearAll: function() {
+      Object.keys(_store).forEach(function(k) { _store[k] = null; });
+    }
+  };
+})();
+
+// [BACKWARD COMPAT v5.4.006] เก็บ global variables เดิมไว้ แต่ให้ CacheManager เป็นแหล่งที่มาหลัก
+// ค่อยๆ เลิกใช้ global variables ในเวอร์ชันถัดไป
 let _GLOBAL_GEO_DICT_CACHE = null;
 let _GLOBAL_GEO_POINTS_CACHE = null;
-// [NEW v5.4.005] RAM Caches for Person & Place (reduce Sheet reads)
 let _GLOBAL_PERSON_CACHE = null;
 let _GLOBAL_PLACE_CACHE = null;
-// [NEW v5.4.005] RAM-based Map Indexes for O(1) lookups
-let _GLOBAL_PERSON_ID_MAP = null;   // Map<personId, personObj>
-let _GLOBAL_PERSON_UUID_MAP = null; // Map<masterUuid, personObj>
-let _GLOBAL_PLACE_ID_MAP = null;    // Map<placeId, placeObj>
-let _GLOBAL_PLACE_UUID_MAP = null;  // Map<masterUuid, placeObj>
-let _GLOBAL_FACT_INVOICE_MAP = null; // Map<invoiceNo, rowIndex>
+let _GLOBAL_PERSON_ID_MAP = null;
+let _GLOBAL_PERSON_UUID_MAP = null;
+let _GLOBAL_PLACE_ID_MAP = null;
+let _GLOBAL_PLACE_UUID_MAP = null;
+let _GLOBAL_FACT_INVOICE_MAP = null;
 
 /**
  * invalidateAllGlobalCaches — [NEW v5.2.003] เคลียร์ค่า Cache ใน RAM ทั้งหมด
  * @summary ใช้สำหรับเคลียร์ความจำของสคริปต์เพื่อให้โหลดข้อมูลใหม่จากชีต 100%
  */
 function invalidateAllGlobalCaches() {
+  // [v5.4.006] ล้างทั้ง Global Variables + CacheManager
   _GLOBAL_GEO_DICT_CACHE = null;
   _GLOBAL_GEO_POINTS_CACHE = null;
-  // [NEW v5.4.005] ล้าง RAM Cache + Map Indexes
   _GLOBAL_PERSON_CACHE = null;
   _GLOBAL_PLACE_CACHE = null;
   _GLOBAL_PERSON_ID_MAP = null;
@@ -92,6 +120,7 @@ function invalidateAllGlobalCaches() {
   _GLOBAL_PLACE_ID_MAP = null;
   _GLOBAL_PLACE_UUID_MAP = null;
   _GLOBAL_FACT_INVOICE_MAP = null;
+  CacheManager.clearAll();
 
   // เรียกฟังก์ชันล้าง Cache ในโมดูลอื่นๆ (ถ้ามี)
   if (typeof invalidatePersonCache_ === 'function') invalidatePersonCache_();
@@ -99,6 +128,63 @@ function invalidateAllGlobalCaches() {
   if (typeof invalidateGeoCache_    === 'function') invalidateGeoCache_();
 
   logInfo('System', 'ล้างข้อมูลในความจำ (Cache) ทั้งหมดเรียบร้อยแล้ว');
+}
+
+// ============================================================
+// SECTION 0.7: genericCachedLoader_ — [NEW v5.4.006] M5
+// รวม RAM Cache + CacheService + Sheet Read เป็นฟังก์ชันเดียว
+// ============================================================
+
+/**
+ * genericCachedLoader_ — โหลดข้อมูลแบบ 3-tier Cache: RAM → CacheService → loaderFn
+ * @param {string} cacheKey - CacheService key
+ * @param {function} loaderFn - ฟังก์ชันที่โหลดข้อมูลจาก Sheet (ถ้า Cache ไม่มี)
+ * @param {number} [ttlSec] - Cache TTL (default: AI_CONFIG.CACHE_TTL_SEC)
+ * @return {Array|Object} ข้อมูลที่โหลดมา
+ */
+function genericCachedLoader_(cacheKey, loaderFn, ttlSec) {
+  var ttl = ttlSec || AI_CONFIG.CACHE_TTL_SEC;
+
+  // Tier 1: RAM Cache (CacheManager)
+  var ramKey = cacheKey.replace(/[^A-Z0-9_]/gi, '_');
+  var ramVal = CacheManager.get(ramKey);
+  if (ramVal) return ramVal;
+
+  // Tier 2: CacheService
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(cacheKey);
+  if (cached) {
+    try {
+      var parsed = JSON.parse(cached);
+      CacheManager.set(ramKey, parsed);
+      return parsed;
+    } catch(e) {}
+  }
+
+  // Tier 3: Loader Function (Sheet Read)
+  var result = loaderFn();
+
+  // เขียนกลับเข้า Cache ทั้ง 2 ชั้น
+  CacheManager.set(ramKey, result);
+  try {
+    cache.put(cacheKey, JSON.stringify(result), ttl);
+  } catch(e) {
+    // CacheService อาจเต็ม — ไม่เป็นไร
+  }
+
+  return result;
+}
+
+/**
+ * hasTimePassed_ — [NEW v5.4.006] S2 Time Guard Helper
+ * ตรวจสอบว่าเวลาผ่านไปเกิน limit หรือยัง
+ * @param {Date} startTime - เวลาเริ่มต้น
+ * @param {number} [limitMs] - เวลาจำกัด (default: AI_CONFIG.TIME_LIMIT_MS)
+ * @return {boolean} true ถ้าเวลาผ่านเกิน limit
+ */
+function hasTimePassed_(startTime, limitMs) {
+  var limit = limitMs || AI_CONFIG.TIME_LIMIT_MS;
+  return new Date() - startTime > limit;
 }
 
 // ============================================================
@@ -383,6 +469,24 @@ const SRC_IDX = Object.freeze({
 // SECTION 6: ตารางงานประจำวัน Index
 // [PRESERVED] ห้ามขยับ — ตรงกับชีตจริง 100%
 // ============================================================
+
+// ============================================================
+// SECTION 6.5: MAPS_CACHE Index (10 คอลัมน์ ตาม SCHEMA['MAPS_CACHE'])
+// [ADD v5.4.006] MAPS_CACHE_IDX — ดัชนีคอลัมน์ MAPS_CACHE ที่ขาดหายไป
+// ============================================================
+
+const MAPS_CACHE_IDX = Object.freeze({
+  KEY:        0,  // cache_key
+  ADDR_INPUT: 1,  // address_input
+  LAT:        2,  // lat
+  LNG:        3,  // lng
+  ADDR:       4,  // resolved_address
+  SOURCE:     5,  // source
+  CREATED_AT: 6,  // created_at
+  HIT:        7,  // hit_count
+  PROV_NAME:  8,  // province
+  DIST_NAME:  9,  // district
+});
 
 const DATA_IDX = Object.freeze({
   JOB_ID:          0,
