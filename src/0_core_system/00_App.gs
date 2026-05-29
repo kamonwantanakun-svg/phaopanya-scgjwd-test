@@ -113,6 +113,11 @@ function onOpen() {
         .addItem('📥 ดึงข้อมูล SCG API',   'fetchDataFromSCGJWD')
         .addItem('📍 จับคู่พิกัด',          'applyMasterCoordinatesToDailyJob')
         .addSeparator()
+        // [NEW v5.4.002 BUG-005] เมนูจัดการ SCG Cookie แบบปลอดภัย (ไม่ใช้ cell B1)
+        .addItem('⚙️ ตั้งค่า SCG Cookie',        'setupScgCookie')
+        .addItem('🔐 ดูสถานะ SCG Cookie',        'showScgCookieStatus')
+        .addItem('🗑️ ลบ SCG Cookie',             'clearScgCookie')
+        .addSeparator()
         .addItem('🗑️ ล้างข้อมูลทั้งหมด',  'clearAllSCGSheets_UI')
     )
 
@@ -270,8 +275,10 @@ function handleSelectionChange_(e) {
     const cellValue = String(e.range.getValue() || '').trim();
     if (!cellValue) return;
 
-    // ดึง ID รูปแบบ PSxxxxx, PLxxxxx, GPxxxxx, DExxxxx, DSxxxxx
-    const matches = cellValue.match(/(PS|PL|GP|DE|DS)\w+/gi);
+    // [FIX BUG-011] ดึง ID รูปแบบ PSxxxxx, PLxxxxx, GPxxxxx, DExxxxx, DSxxxxx
+    // เดิมใช้ /(PS|PL|GP|DE|DS)\w+/gi — broad pattern: match คำ "PLEASE", "DESCRIPTION", "GPS" ผิดพลาด
+    // ใหม่ใช้ word-boundary + ของตัวเลข อย่างน้อย 3 หลัง prefix เพื่อจำกัดเฉพาะ ID จริงๆ
+    const matches = cellValue.match(/\b(PS|PL|GP|DE|DS)\d{3,}\b/gi);
     if (!matches || matches.length === 0) return;
 
     const targetId = matches[0].toUpperCase().trim();
@@ -589,12 +596,11 @@ function setupEnvironment() {
   if (result.getSelectedButton() !== ui.Button.OK) return;
 
   const inputKey = result.getResponseText().trim();
-  const keyRegex = /^AIza[0-9A-Za-z\-_]{35}$/;
-
-  if (!inputKey || !keyRegex.test(inputKey)) {
+  // [FIX BUG-021/DRY] ใช้ GEMINI_API_KEY_REGEX จาก 01_Config.gs (Single Source of Truth)
+  if (!inputKey || !GEMINI_API_KEY_REGEX.test(inputKey)) {
     ui.alert(
       '❌ API Key ไม่ถูกต้อง\n' +
-      'ต้องขึ้นต้นด้วย "AIza" และยาว 39 ตัวอักษร'
+      'ต้องขึ้นต้นด้วย "AIza" และยาว 34-44 ตัวอักษร (รองรับหลาย format ของ Google)'
     );
     return;
   }

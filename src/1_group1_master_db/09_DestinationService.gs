@@ -279,7 +279,10 @@ function loadAllDestinations_() {
   const cacheKey = 'M_DEST_ALL';
   const cache    = CacheService.getScriptCache();
   const cached   = cache.get(cacheKey);
-  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+  if (cached) {
+    try { return JSON.parse(cached); }
+    catch(e) { logWarn('DestinationService', `cache parse failed (returning fallback): ${e.message}`); }
+  }
 
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET.M_DESTINATION);

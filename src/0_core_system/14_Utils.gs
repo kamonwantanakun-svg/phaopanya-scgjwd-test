@@ -296,11 +296,17 @@ function parseLatLng(latLngStr) {
 /**
  * callGeminiAPI — เรียกใช้งาน Google Gemini API
  * [ADD v003] รองรับ AI Reasoning Tier F
+ * [FIX NEW-002 v5.4.002] ใช้ getGeminiApiKey() จาก 01_Config.gs เพื่อ validate รูปแบบ key
+ *   เดิม: อ่าน PropertiesService ตรงๆ → ข้าม regex validation
+ *   ผล: key ที่ malformed จะถูกส่งไป API endpoint → error ยุ่งเหยิง + format อาจ leak ใน log
  */
 function callGeminiAPI(prompt, modelName = 'gemini-1.5-flash') {
-  const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-  if (!apiKey) {
-    throw new Error('กรุณาตั้งค่า GEMINI_API_KEY ในเมนูระบบ');
+  let apiKey;
+  try {
+    apiKey = getGeminiApiKey();
+  } catch (keyErr) {
+    logError('Utils', `callGeminiAPI: API Key validation failed — ${keyErr.message}`);
+    throw keyErr;
   }
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
@@ -418,7 +424,7 @@ function normalizeInvoiceNo(inv) {
       } else {
         str = numStr + '0'.repeat(exp);
       }
-    } catch (e) {}
+    } catch (e) { logWarn('Utils', `normalizeInvoiceNo e-notation parse failed (using raw string): ${e.message}`); }
   }
   if (str.endsWith('.0')) str = str.slice(0, -2);
   return str;

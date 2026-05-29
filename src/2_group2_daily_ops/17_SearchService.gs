@@ -411,10 +411,11 @@ function lookupSingleRow(rowNumber) {
 
   const result = findBestGeoByPersonPlace(rawPerson, rawPlace, scgLatLng);
 
-  console.log(
-    `[SearchService] Row ${rowNumber} → Status:${result.status} ` +
-    `(${result.confidence}%) lat:${result.lat} lng:${result.lng}\n` +
-    `  Reason: ${result.reason}`
+  // [BUG-022] console.log → logInfo
+  logInfo('SearchService',
+    `Row ${rowNumber} → Status:${result.status} ` +
+    `(${result.confidence}%) lat:${result.lat} lng:${result.lng} | ` +
+    `Reason: ${result.reason}`
   );
 
   return result;
