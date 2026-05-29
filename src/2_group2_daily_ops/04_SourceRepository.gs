@@ -117,7 +117,8 @@ function getAllSourceRows() {
   const cached = cache.get(CACHE_KEY_SOURCE);
 
   if (cached) {
-    try { return JSON.parse(cached); } catch (e) {}
+    try { return JSON.parse(cached); }
+    catch (e) { logWarn('SourceRepository', `cache parse SOURCE failed (returning fallback): ${e.message}`); }
   }
 
   const ss       = SpreadsheetApp.getActiveSpreadsheet();
@@ -184,7 +185,8 @@ function getProcessedInvoiceSet_() {
   const cache    = CacheService.getScriptCache();
   const cached   = cache.get(CACHE_KEY_INVOICES);
   if (cached) {
-    try { return new Set(JSON.parse(cached)); } catch (e) {}
+    try { return new Set(JSON.parse(cached)); }
+    catch (e) { logWarn('SourceRepository', `cache parse INVOICES failed (returning fallback): ${e.message}`); }
   }
 
   const ss        = SpreadsheetApp.getActiveSpreadsheet();
@@ -205,7 +207,7 @@ function getProcessedInvoiceSet_() {
   try {
     cache.put(CACHE_KEY_INVOICES, JSON.stringify([...doneSet]),
               AI_CONFIG.CACHE_TTL_SEC);
-  } catch (e) {}
+  } catch (e) { logWarn('SourceRepository', `cache put INVOICES failed (non-fatal): ${e.message}`); }
 
   return doneSet;
 }

@@ -211,7 +211,8 @@ function loadGlobalAliasesMap_() {
   const cache = CacheService.getScriptCache();
   const cached = cache.get(cacheKey);
   if (cached) {
-    try { return JSON.parse(cached); } catch (e) {}
+    try { return JSON.parse(cached); }
+    catch (e) { logWarn('AliasService', `cache parse failed (returning fallback): ${e.message}`); }
   }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -234,7 +235,8 @@ function loadGlobalAliasesMap_() {
     resultObj[dictKey].push(cleanName);
   });
 
-  try { cache.put(cacheKey, JSON.stringify(resultObj), AI_CONFIG.CACHE_TTL_SEC); } catch (e) {}
+  try { cache.put(cacheKey, JSON.stringify(resultObj), AI_CONFIG.CACHE_TTL_SEC); }
+  catch (e) { logWarn('AliasService', `cache put failed (non-fatal): ${e.message}`); }
   return resultObj;
 }
 
@@ -252,7 +254,8 @@ function loadGlobalAliasReverseIndex_() {
   const cache = CacheService.getScriptCache();
   const cached = cache.get(cacheKey);
   if (cached) {
-    try { return JSON.parse(cached); } catch (e) {}
+    try { return JSON.parse(cached); }
+    catch (e) { logWarn('AliasService', `cache parse failed (returning fallback): ${e.message}`); }
   }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -274,7 +277,8 @@ function loadGlobalAliasReverseIndex_() {
     reverseIndex[cleanName].push({ masterUuid: masterUuid, entityType: eType });
   });
 
-  try { cache.put(cacheKey, JSON.stringify(reverseIndex), AI_CONFIG.CACHE_TTL_SEC); } catch (e) {}
+  try { cache.put(cacheKey, JSON.stringify(reverseIndex), AI_CONFIG.CACHE_TTL_SEC); }
+  catch (e) { logWarn('AliasService', `cache put failed (non-fatal): ${e.message}`); }
   return reverseIndex;
 }
 
@@ -907,7 +911,10 @@ function saveMigrationCheckpoint_(step, rowIndex) {
 function loadMigrationCheckpoint_() {
   var raw = PropertiesService.getScriptProperties()
     .getProperty(MIGRATION_CHECKPOINT_KEY);
-  if (raw) { try { return JSON.parse(raw); } catch(e) {} }
+  if (raw) {
+    try { return JSON.parse(raw); }
+    catch(e) { logWarn('AliasService', `cache parse failed (returning fallback): ${e.message}`); }
+  }
   return { step: 1, rowIndex: 0 };
 }
 

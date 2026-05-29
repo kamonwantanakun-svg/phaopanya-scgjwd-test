@@ -456,7 +456,7 @@ function loadAllPersons_() {
       _GLOBAL_PERSON_CACHE = JSON.parse(cached);
       _buildPersonMaps_(_GLOBAL_PERSON_CACHE);
       return _GLOBAL_PERSON_CACHE;
-    } catch(e) {}
+    } catch(e) { logWarn('PersonService', `cache parse failed (rebuilding from sheet): ${e.message}`); }
   }
 
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
@@ -525,7 +525,10 @@ function loadAllAliases_() {
   const cacheKey = 'M_PERSON_ALIAS_ALL';
   const cache    = CacheService.getScriptCache();
   const cached   = cache.get(cacheKey);
-  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+  if (cached) {
+    try { return JSON.parse(cached); }
+    catch(e) { logWarn('PersonService', `cache parse failed (returning fallback): ${e.message}`); }
+  }
 
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET.M_PERSON_ALIAS);
@@ -535,7 +538,7 @@ function loadAllAliases_() {
   const colsToRead = Math.min(SCHEMA[SHEET.M_PERSON_ALIAS].length, sheet.getLastColumn());
   const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, colsToRead).getValues();
   try { cache.put(cacheKey, JSON.stringify(rows), AI_CONFIG.CACHE_TTL_SEC); }
-  catch(e) {}
+  catch(e) { logWarn('PersonService', `cache.put failed: ${e.message}`); }
   return rows;
 }
 

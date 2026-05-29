@@ -369,14 +369,18 @@ const REVIEW_IDX = Object.freeze({
   NOTE:          21,
 });
 
-// [ADD v5.4.003] SYS_LOG_IDX — ดัชนีคอลัมน์ SYS_LOG
+// [FIX v5.4.002] SYS_LOG_IDX — ดัชนีคอลัมน์ SYS_LOG
+// [CODE_REVIEW NEW-001] Aligned with SCHEMA['SYS_LOG'] in 02_Schema.gs
+//   Schema order: log_id[0], timestamp[1], module[2], level[3], message[4], details[5]
+//   Previous mapping wrongly placed LEVEL at index 1 (timestamp column),
+//   causing diagnoseSystemState() to never find any error logs.
 const SYS_LOG_IDX = Object.freeze({
-  TIMESTAMP: 0,
-  LEVEL:     1,
+  LOG_ID:    0,
+  TIMESTAMP: 1,
   MODULE:    2,
-  SHEET:     3,
+  LEVEL:     3,
   MESSAGE:   4,
-  DETAILS:   5
+  DETAILS:   5,
 });
 
 // ============================================================
@@ -557,7 +561,11 @@ const AI_CONFIG = Object.freeze({
   MODEL:                'gemini-1.5-flash',
   BATCH_SIZE:           20,
   RETRIEVAL_LIMIT:      50,
-  CACHE_TTL_SEC:        21600,
+  CACHE_TTL_SEC:        21600, // [LEGACY] default 6h — ใช้สำหรับข้อมูลทั่วไป (kept for backward compat)
+  // [FIX BUG-015] Differentiated cache TTLs by data volatility:
+  CACHE_TTL_GEO_SEC:    86400, // 24h — SYS_TH_GEO เปลี่ยนแปลงนานๆ ครั้ง (รายเดือน)
+  CACHE_TTL_ALIAS_SEC:  3600,  // 1h  — Alias data เปลี่ยนทุก pipeline run
+  CACHE_TTL_GENERAL_SEC: 21600,// 6h  — Person/Place/Geo cache, Maps cache
   GEO_RADIUS_M:         50,
   GEO_GRID_SIZE:        0.01, // [ADD v5.4.003] ~1.1 กม. ต่อ grid cell — ย้ายจาก 08_GeoService.gs
   USE_AI_REASONING:     false, // [PH2] Set to false for safety (AI should not guess coordinates)
@@ -634,6 +642,16 @@ function validateConfig() {
       }
     });
   }
+  // [FIX BUG-025] ตรวจ APP_VERSION vs SCHEMA_VERSION ให้ตรงกัน
+  // ป้องกันกรณี dev อัปเดตอันใดอันหนึ่งแต่ลืมอีกอัน
+  if (APP_VERSION !== SCHEMA_VERSION) {
+    logWarn(
+      'Config',
+      `Version mismatch: APP=${APP_VERSION} SCHEMA=${SCHEMA_VERSION} — ` +
+      'กรุณาอัปเดตทั้งสองค่าให้ตรงกันใน 01_Config.gs'
+    );
+  }
+
   logInfo('Config', `validateConfig ผ่าน — Schema v${SCHEMA_VERSION}`);
 }
 
@@ -642,17 +660,28 @@ function validateConfig() {
 // ============================================================
 
 /**
- * getGeminiApiKey — ดึง API Key จาก PropertiesService
- * [RULE 5] ห้าม Hardcode
+ * GEMINI_API_KEY_REGEX — รูปแบบ API Key ที่ยอมรับ
+ * [FIX BUG-021] เดิมล็อกความยาว 35 ตัวพอดี (รวม prefix = 39)
+ *               เปลี่ยนเป็นช่วง 30-40 เพื่อรองรับ Key ใหม่ของ Google
+ * [FIX BUG-021/DRY] Single Source of Truth — อย่า duplicate regex ในไฟล์อื่น
+ *                  ทุกที่ที่ต้อง validate API Key ให้เรียก getGeminiApiKey() แทน
+ */
+const GEMINI_API_KEY_REGEX = /^AIza[0-9A-Za-z\-_]{30,40}$/;
+
+/**
+ * getGeminiApiKey — ดึง API Key จาก PropertiesService พร้อม validate รูปแบบ
+ * [RULE 5] ห้าม Hardcode — ทุกโมดูลที่ต้อง access GEMINI_API_KEY ให้เรียกผ่านนี้
+ * @return {string} validated key
+ * @throws ถ้า key ไม่ได้ตั้งค่า หรือรูปแบบไม่ตรง GEMINI_API_KEY_REGEX
  */
 function getGeminiApiKey() {
   const key = PropertiesService.getScriptProperties()
                                .getProperty('GEMINI_API_KEY');
-  if (!key || !/^AIza[0-9A-Za-z\-_]{35}$/.test(String(key).trim())) {
+  if (!key || !GEMINI_API_KEY_REGEX.test(String(key).trim())) {
     throw new Error(
       'GEMINI_API_KEY ยังไม่ได้ตั้งค่าหรือรูปแบบไม่ถูกต้อง\n' +
       'กรุณารัน เมนู LMDS > ระบบ > ตั้งค่า API Key ก่อน'
     );
   }
-  return key;
+  return String(key).trim();
 }

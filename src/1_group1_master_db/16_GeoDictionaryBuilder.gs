@@ -383,7 +383,8 @@ function savePostcodeMapToCache_(postcodeMap) {
   const chunkSize = 350; // แบ่ง 350 keys ต่อก้อน เพื่อไม่ให้เกิน 100KB limit ของ CacheService
   const totalChunks = Math.ceil(keys.length / chunkSize);
 
-  try { cache.put('TH_GEO_POSTCODE_TOTAL', String(totalChunks), AI_CONFIG.CACHE_TTL_SEC); } catch(e){}
+  try { cache.put('TH_GEO_POSTCODE_TOTAL', String(totalChunks), AI_CONFIG.CACHE_TTL_SEC); }
+  catch(e) { logWarn('GeoDictionaryBuilder', `cache put TH_GEO_POSTCODE_TOTAL failed: ${e.message}`); }
 
   for (let i = 0; i < totalChunks; i++) {
     const chunkKeys = keys.slice(i * chunkSize, (i + 1) * chunkSize);
@@ -400,16 +401,23 @@ function savePostcodeMapToCache_(postcodeMap) {
 function getCachedProvinces_() {
   const cache  = CacheService.getScriptCache();
   const cached = cache.get('TH_GEO_PROVINCES');
-  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+  if (cached) {
+    try { return JSON.parse(cached); }
+    catch(e) { logWarn('GeoDictionaryBuilder', `cache parse TH_GEO_PROVINCES failed: ${e.message}`); }
+  }
   const result = buildProvincesFromSheet_();
-  try { cache.put('TH_GEO_PROVINCES', JSON.stringify(result), AI_CONFIG.CACHE_TTL_SEC); } catch(e) {}
+  try { cache.put('TH_GEO_PROVINCES', JSON.stringify(result), AI_CONFIG.CACHE_TTL_SEC); }
+  catch(e) { logWarn('GeoDictionaryBuilder', `cache put TH_GEO_PROVINCES failed: ${e.message}`); }
   return result;
 }
 
 function getCachedDistricts_() {
   const cache  = CacheService.getScriptCache();
   const cached = cache.get('TH_GEO_DISTRICTS');
-  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+  if (cached) {
+    try { return JSON.parse(cached); }
+    catch(e) { logWarn('GeoDictionaryBuilder', `cache parse TH_GEO_DISTRICTS failed: ${e.message}`); }
+  }
   return buildDistrictsMapFromSheet_();
 }
 

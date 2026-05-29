@@ -90,7 +90,8 @@ function geocodeAddress(address) {
   const ramCache  = CacheService.getScriptCache();
   const ramCached = ramCache.get(cacheKey);
   if (ramCached) {
-    try { return JSON.parse(ramCached); } catch(e) {}
+    try { return JSON.parse(ramCached); }
+    catch(e) { logWarn('GoogleMapsAPI', `RAM cache parse failed (returning fallback): ${e.message}`); }
   }
 
   // ชั้น 2: Sheet Cache
@@ -162,7 +163,8 @@ function reverseGeocode(lat, lng) {
   const ramCache  = CacheService.getScriptCache();
   const ramCached = ramCache.get(cacheKey);
   if (ramCached) {
-    try { return JSON.parse(ramCached); } catch(e) {}
+    try { return JSON.parse(ramCached); }
+    catch(e) { logWarn('GoogleMapsAPI', `RAM cache parse failed (returning fallback): ${e.message}`); }
   }
 
   const sheetResult = getFromSheetCache_(cacheKey);
