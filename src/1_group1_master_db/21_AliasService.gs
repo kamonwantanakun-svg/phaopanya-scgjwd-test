@@ -462,48 +462,54 @@ function convertPlaceIdToUuid(placeId) {
  * ควรรันหลังจาก setup sheets หรือก่อน migration
  */
 function assignMasterUuidIfMissing() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var fixedTotal = 0;
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var fixedTotal = 0;
 
-  [SHEET.M_PERSON, SHEET.M_PLACE].forEach(function(sheetName) {
-    var sheet = ss.getSheetByName(sheetName);
-    if (!sheet) return;
+    [SHEET.M_PERSON, SHEET.M_PLACE].forEach(function(sheetName) {
+      var sheet = ss.getSheetByName(sheetName);
+      if (!sheet) return;
 
-    // หาตำแหน่งคอลัมน์ master_uuid จาก header
-    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    var mUuidColIdx = headers.indexOf('master_uuid');
-    if (mUuidColIdx === -1) {
-      logWarn('AliasService', sheetName + ': ไม่พบคอลัมน์ master_uuid ใน header — ข้าม');
-      return;
-    }
-
-    var lr = sheet.getLastRow();
-    if (lr < 2) return;
-
-    var uuidColRange = sheet.getRange(2, mUuidColIdx + 1, lr - 1, 1);
-    var uidData = uuidColRange.getValues();
-    var fixedCount = 0;
-
-    for (var i = 0; i < uidData.length; i++) {
-      if (!uidData[i][0]) {
-        uidData[i][0] = Utilities.getUuid();
-        fixedCount++;
+      // หาตำแหน่งคอลัมน์ master_uuid จาก header
+      var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      var mUuidColIdx = headers.indexOf('master_uuid');
+      if (mUuidColIdx === -1) {
+        logWarn('AliasService', sheetName + ': ไม่พบคอลัมน์ master_uuid ใน header — ข้าม');
+        return;
       }
+
+      var lr = sheet.getLastRow();
+      if (lr < 2) return;
+
+      var uuidColRange = sheet.getRange(2, mUuidColIdx + 1, lr - 1, 1);
+      var uidData = uuidColRange.getValues();
+      var fixedCount = 0;
+
+      for (var i = 0; i < uidData.length; i++) {
+        if (!uidData[i][0]) {
+          uidData[i][0] = Utilities.getUuid();
+          fixedCount++;
+        }
+      }
+
+      if (fixedCount > 0) {
+        uuidColRange.setValues(uidData);
+        logInfo('AliasService', sheetName + ': มอบ master_uuid ให้ ' + fixedCount + ' แถวที่ยังไม่มี');
+      }
+      fixedTotal += fixedCount;
+    });
+
+    // ล้าง Cache เพื่อให้ loader เห็นข้อมูลใหม่
+    if (fixedTotal > 0) {
+      invalidateAllGlobalCaches();
     }
 
-    if (fixedCount > 0) {
-      uuidColRange.setValues(uidData);
-      logInfo('AliasService', sheetName + ': มอบ master_uuid ให้ ' + fixedCount + ' แถวที่ยังไม่มี');
-    }
-    fixedTotal += fixedCount;
-  });
-
-  // ล้าง Cache เพื่อให้ loader เห็นข้อมูลใหม่
-  if (fixedTotal > 0) {
-    invalidateAllGlobalCaches();
+    return fixedTotal;
+  } catch (err) {
+    logError('assignMasterUuidIfMissing', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ assignMasterUuidIfMissing ล้มเหลว:\n' + err.message);
+    return 0;
   }
-
-  return fixedTotal;
 }
 
 // ============================================================
@@ -517,6 +523,7 @@ function assignMasterUuidIfMissing() {
  * [FIX v5.4.002] เพิ่ม Time Guard ป้องกัน GAS Timeout (6 นาที)
  */
 function MIGRATION_HybridAliasSystem() {
+  try {
   var ui = SpreadsheetApp.getUi();
   var confirmation = ui.alert(
     '🔄 Migration: Hybrid Alias System',
@@ -686,6 +693,10 @@ function MIGRATION_HybridAliasSystem() {
     '• ใช้เวลา: ' + elapsedSec + ' วินาที' +
     (timedOut ? '\n\n💡 กรุณารัน Migration อีกครั้งเพื่อดำเนินการต่อ (Checkpoint บันทึกแล้ว)' : '')
   );
+  } catch (err) {
+    logError('MIGRATION_HybridAliasSystem', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ MIGRATION_HybridAliasSystem ล้มเหลว:\n' + err.message);
+  }
 }
 
 // ============================================================

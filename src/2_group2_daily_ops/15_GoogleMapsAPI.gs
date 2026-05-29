@@ -327,21 +327,26 @@ function saveToSheetCache_(cacheKey, inputAddr, result) {
  * clearMapsCache — ล้าง MAPS_CACHE Sheet และ RAM Cache ทั้งหมด
  */
 function clearMapsCache() {
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.MAPS_CACHE);
+  try {
+    const ss    = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.MAPS_CACHE);
 
-  if (sheet && sheet.getLastRow() > 1) {
-    // [FIX v5.2.009] ดึงรายชื่อ Cache Key ทั้งหมดจากชีตก่อนลบ เพื่อนำไปลบใน CacheService ได้ถูกต้อง
-    const keys = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().map(r => String(r[0] || '').trim()).filter(Boolean);
-    if (keys.length > 0) {
-      // ลบทีละ 200 keys เพื่อไม่ให้เกิน limit ของ CacheService.removeAll
-      const cache = CacheService.getScriptCache();
-      for (let i = 0; i < keys.length; i += 200) {
-        cache.removeAll(keys.slice(i, i + 200));
+    if (sheet && sheet.getLastRow() > 1) {
+      // [FIX v5.2.009] ดึงรายชื่อ Cache Key ทั้งหมดจากชีตก่อนลบ เพื่อนำไปลบใน CacheService ได้ถูกต้อง
+      const keys = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().map(r => String(r[0] || '').trim()).filter(Boolean);
+      if (keys.length > 0) {
+        // ลบทีละ 200 keys เพื่อไม่ให้เกิน limit ของ CacheService.removeAll
+        const cache = CacheService.getScriptCache();
+        for (let i = 0; i < keys.length; i += 200) {
+          cache.removeAll(keys.slice(i, i + 200));
+        }
       }
+      sheet.deleteRows(2, sheet.getLastRow() - 1);
     }
-    sheet.deleteRows(2, sheet.getLastRow() - 1);
-  }
 
-  logInfo('MapsAPI', 'ล้าง MAPS_CACHE เรียบร้อย');
+    logInfo('MapsAPI', 'ล้าง MAPS_CACHE เรียบร้อย');
+  } catch (err) {
+    logError('clearMapsCache', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ clearMapsCache ล้มเหลว:\n' + err.message);
+  }
 }

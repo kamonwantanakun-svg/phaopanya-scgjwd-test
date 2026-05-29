@@ -495,14 +495,19 @@ function getPipelineDiagnosticSummary_() {
 // ============================================================
 
 function openReviewQueue() {
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.Q_REVIEW);
-  if (sheet) {
-    ss.setActiveSheet(sheet);
-    ss.toast('กำลังแสดง Review Queue', APP_NAME, 3);
-  } else {
-    SpreadsheetApp.getUi()
-      .alert('❌ ไม่พบชีต Q_REVIEW\nกรุณารัน "สร้างชีตทั้งหมด" ก่อน');
+  try {
+    const ss    = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.Q_REVIEW);
+    if (sheet) {
+      ss.setActiveSheet(sheet);
+      ss.toast('กำลังแสดง Review Queue', APP_NAME, 3);
+    } else {
+      SpreadsheetApp.getUi()
+        .alert('❌ ไม่พบชีต Q_REVIEW\nกรุณารัน "สร้างชีตทั้งหมด" ก่อน');
+    }
+  } catch (err) {
+    logError('openReviewQueue', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ openReviewQueue ล้มเหลว:\n' + err.message);
   }
 }
 
@@ -511,62 +516,68 @@ function openReviewQueue() {
 // ============================================================
 
 function checkSystemIntegrity() {
-  const ui     = SpreadsheetApp.getUi();
-  const ss     = SpreadsheetApp.getActiveSpreadsheet();
-  const errors = [];
-  const warns  = [];
-
-  // [FIX v003] เพิ่ม SHEET.SYS_TH_GEO ใน requiredSheets
-  // [NEW v5.4.000] เพิ่ม SHEET.M_ALIAS ใน requiredSheets
-  const requiredSheets = [
-    SHEET.M_PERSON,      SHEET.M_PERSON_ALIAS,
-    SHEET.M_PLACE,       SHEET.M_PLACE_ALIAS,
-    SHEET.M_ALIAS,
-    SHEET.M_GEO_POINT,   SHEET.M_DESTINATION,
-    SHEET.FACT_DELIVERY, SHEET.Q_REVIEW,
-    SHEET.SYS_LOG,       SHEET.SYS_CONFIG,
-    SHEET.SYS_TH_GEO,    // [ADD v003]
-    SHEET.MAPS_CACHE,    SHEET.RPT_QUALITY,
-    SHEET.DAILY_JOB,     SHEET.INPUT,
-    SHEET.EMPLOYEE,      SHEET.SOURCE,
-  ];
-
-  requiredSheets.forEach(name => {
-    if (!ss.getSheetByName(name)) errors.push(`ไม่พบชีต: ${name}`);
-  });
-
   try {
-    const apiKey = PropertiesService.getScriptProperties()
-                                    .getProperty('GEMINI_API_KEY');
-    if (!apiKey) {
-      warns.push('GEMINI_API_KEY ยังไม่ได้ตั้งค่า');
-    } else if (apiKey.length < 20) {
-      warns.push('GEMINI_API_KEY อาจไม่ถูกต้อง');
+    const ui     = SpreadsheetApp.getUi();
+    const ss     = SpreadsheetApp.getActiveSpreadsheet();
+    const errors = [];
+    const warns  = [];
+
+    // [FIX v003] เพิ่ม SHEET.SYS_TH_GEO ใน requiredSheets
+    // [NEW v5.4.000] เพิ่ม SHEET.M_ALIAS ใน requiredSheets
+    const requiredSheets = [
+      SHEET.M_PERSON,      SHEET.M_PERSON_ALIAS,
+      SHEET.M_PLACE,       SHEET.M_PLACE_ALIAS,
+      SHEET.M_ALIAS,
+      SHEET.M_GEO_POINT,   SHEET.M_DESTINATION,
+      SHEET.FACT_DELIVERY, SHEET.Q_REVIEW,
+      SHEET.SYS_LOG,       SHEET.SYS_CONFIG,
+      SHEET.SYS_TH_GEO,    // [ADD v003]
+      SHEET.MAPS_CACHE,    SHEET.RPT_QUALITY,
+      SHEET.DAILY_JOB,     SHEET.INPUT,
+      SHEET.EMPLOYEE,      SHEET.SOURCE,
+    ];
+
+    requiredSheets.forEach(name => {
+      if (!ss.getSheetByName(name)) errors.push(`ไม่พบชีต: ${name}`);
+    });
+
+    try {
+      const apiKey = PropertiesService.getScriptProperties()
+                                      .getProperty('GEMINI_API_KEY');
+      if (!apiKey) {
+        warns.push('GEMINI_API_KEY ยังไม่ได้ตั้งค่า');
+      } else if (apiKey.length < 20) {
+        warns.push('GEMINI_API_KEY อาจไม่ถูกต้อง');
+      }
+    } catch (e) {
+      warns.push('ไม่สามารถอ่าน GEMINI_API_KEY: ' + e.message);
     }
-  } catch (e) {
-    warns.push('ไม่สามารถอ่าน GEMINI_API_KEY: ' + e.message);
-  }
 
-  if (errors.length === 0 && warns.length === 0) {
-    ui.alert(`✅ System Integrity: ปกติทุกอย่าง!\nVersion: ${APP_VERSION}`);
-    return;
-  }
+    if (errors.length === 0 && warns.length === 0) {
+      ui.alert(`✅ System Integrity: ปกติทุกอย่าง!\nVersion: ${APP_VERSION}`);
+      return;
+    }
 
-  let msg = '';
-  if (errors.length > 0) {
-    msg += `❌ พบ Error ${errors.length} รายการ:\n`;
-    msg += errors.map(e => '  • ' + e).join('\n');
-    msg += '\n\n💡 รัน เมนู > ระบบ > สร้างชีตทั้งหมด\n\n';
-  }
-  if (warns.length > 0) {
-    msg += `⚠️ พบ Warning ${warns.length} รายการ:\n`;
-    msg += warns.map(w => '  • ' + w).join('\n');
-  }
+    let msg = '';
+    if (errors.length > 0) {
+      msg += `❌ พบ Error ${errors.length} รายการ:\n`;
+      msg += errors.map(e => '  • ' + e).join('\n');
+      msg += '\n\n💡 รัน เมนู > ระบบ > สร้างชีตทั้งหมด\n\n';
+    }
+    if (warns.length > 0) {
+      msg += `⚠️ พบ Warning ${warns.length} รายการ:\n`;
+      msg += warns.map(w => '  • ' + w).join('\n');
+    }
 
-  ui.alert(msg);
+    ui.alert(msg);
+  } catch (err) {
+    logError('checkSystemIntegrity', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ checkSystemIntegrity ล้มเหลว:\n' + err.message);
+  }
 }
 
 function setupEnvironment() {
+  try {
   const ui = SpreadsheetApp.getUi();
 
   const result = ui.prompt(
@@ -592,9 +603,14 @@ function setupEnvironment() {
                    .setProperty('GEMINI_API_KEY', inputKey);
   logInfo('App', 'ตั้งค่า GEMINI_API_KEY สำเร็จ');
   ui.alert('✅ บันทึก API Key เรียบร้อยแล้วครับ!');
+  } catch (err) {
+    logError('setupEnvironment', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ setupEnvironment ล้มเหลว:\n' + err.message);
+  }
 }
 
 function showVersionInfo() {
+  try {
   const ui = SpreadsheetApp.getUi();
   const msg =
     `🚚 ${APP_NAME}\n` +
@@ -630,6 +646,10 @@ function showVersionInfo() {
     `🔗 ระบบเสริม: Hybrid Alias Architecture (21)`;
 
   ui.alert(msg);
+  } catch (err) {
+    logError('showVersionInfo', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ showVersionInfo ล้มเหลว:\n' + err.message);
+  }
 }
 
 // ============================================================
@@ -642,6 +662,7 @@ function showVersionInfo() {
  * เรียกจากเมนู: 🔧 ระบบ > 🔍 วินิจฉัย Pipeline (Diagnostic)
  */
 function diagnoseSystemState() {
+  try {
   const ui = SpreadsheetApp.getUi();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const lines = [];
@@ -780,4 +801,8 @@ function diagnoseSystemState() {
   }
 
   ui.alert(lines.join('\n'));
+  } catch (err) {
+    logError('diagnoseSystemState', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ diagnoseSystemState ล้มเหลว:\n' + err.message);
+  }
 }

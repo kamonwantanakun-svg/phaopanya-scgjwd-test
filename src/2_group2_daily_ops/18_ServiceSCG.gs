@@ -286,6 +286,7 @@ function applyMasterCoordinatesToDailyJob() {
 // ============================================================
 
 function buildOwnerSummary() {  
+  try {
   const ss        = SpreadsheetApp.getActiveSpreadsheet();  
   const dataSheet = ss.getSheetByName(SCG_CONFIG.SHEET_DATA);  
   if (!dataSheet || dataSheet.getLastRow() < 2) return;
@@ -323,6 +324,9 @@ function buildOwnerSummary() {
     summarySheet.getRange(2, 4, rows.length, 2).setNumberFormat("#,##0");  
     summarySheet.getRange(2, 6, rows.length, 1).setNumberFormat("dd/mm/yyyy HH:mm");  
   }  
+  } catch (err) {
+    logError('buildOwnerSummary', err.message + '\n' + err.stack);
+  }
 }
 
 // ============================================================
@@ -330,6 +334,7 @@ function buildOwnerSummary() {
 // ============================================================
 
 function buildShipmentSummary() {  
+  try {
   const ss        = SpreadsheetApp.getActiveSpreadsheet();  
   const dataSheet = ss.getSheetByName(SCG_CONFIG.SHEET_DATA);  
   if (!dataSheet || dataSheet.getLastRow() < 2) return;
@@ -372,6 +377,9 @@ function buildShipmentSummary() {
     summarySheet.getRange(2, 5, rows.length, 2).setNumberFormat("#,##0");  
     summarySheet.getRange(2, 7, rows.length, 1).setNumberFormat("dd/mm/yyyy HH:mm");  
   }  
+  } catch (err) {
+    logError('buildShipmentSummary', err.message + '\n' + err.stack);
+  }
 }
 
 // ============================================================
@@ -404,16 +412,21 @@ function clearAllSCGSheets_UI() {
 }
 
 function clearDailyJobLatLng() {
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET.DAILY_JOB);
-  if (!sheet || sheet.getLastRow() < 2) return;
+  try {
+    const ss    = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET.DAILY_JOB);
+    if (!sheet || sheet.getLastRow() < 2) return;
 
-  const totalRows    = sheet.getLastRow() - 1;
-  const latActualCol = DATA_IDX.LATLNG_ACTUAL + 1;
+    const totalRows    = sheet.getLastRow() - 1;
+    const latActualCol = DATA_IDX.LATLNG_ACTUAL + 1;
 
-  sheet.getRange(2, latActualCol, totalRows, 1).clearContent();
-  sheet.getRange(2, 1, totalRows, SCHEMA[SHEET.DAILY_JOB].length)
-       .setBackground(null);
+    sheet.getRange(2, latActualCol, totalRows, 1).clearContent();
+    sheet.getRange(2, 1, totalRows, SCHEMA[SHEET.DAILY_JOB].length)
+         .setBackground(null);
 
-  logInfo('ServiceSCG', `clearDailyJobLatLng: ล้าง ${totalRows} แถว`);
+    logInfo('ServiceSCG', `clearDailyJobLatLng: ล้าง ${totalRows} แถว`);
+  } catch (err) {
+    logError('clearDailyJobLatLng', err.message + '\n' + err.stack);
+    SpreadsheetApp.getUi().alert('❌ clearDailyJobLatLng ล้มเหลว:\n' + err.message);
+  }
 }
